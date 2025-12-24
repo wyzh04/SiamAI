@@ -17,6 +17,7 @@ const SYSTEM_INSTRUCTION_BASE = `
 【特殊能力 - 当已知产品信息时】：
 1. SKU 规划：请根据产品特性，建议适合泰国市场的 SKU 组合（如：颜色、尺寸、打包销售策略）。
 2. 视频脚本：可以为该产品生成 TikTok 短视频拍摄脚本（包含分镜、运镜、台词）。
+3. 详情页优化：撰写 Shopee/Lazada/TikTok 不同风格的产品详情页卖点（TikTok 偏向短快痛点、情绪价值，Shopee 偏向参数、信任感）。
 
 【图片分析能力】：
 如果用户上传了图片（例如竞品 SKU、海报、买家秀），请分析图片的视觉元素、卖点、材质和适用场景。
@@ -222,7 +223,8 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData }) => {
     { text: "生成高转化 SKU 组合建议", icon: <Box size={16}/> },
     { text: "写一个 TikTok 爆款视频脚本", icon: <Clapperboard size={16}/> },
     { text: "分析泰语差评风险点", icon: <MessageSquarePlus size={16}/> },
-    { text: "Shopee 详情页卖点描述", icon: <Sparkles size={16}/> }
+    { text: "Shopee 详情页卖点描述", icon: <Sparkles size={16}/> },
+    { text: "TikTok 详情页卖点描述", icon: <Sparkles size={16}/> }
   ] : [
     { text: "帮我写 3 个泰语 TikTok 标题", icon: <MessageSquarePlus size={16}/> },
     { text: "目前曼谷流行什么产品？", icon: <Sparkles size={16}/> },

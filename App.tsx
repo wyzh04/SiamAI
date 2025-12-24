@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppMode, AnalysisData, User, HistoryItem } from './types';
-import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt } from './services/gemini';
+import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt, generateSkuUiLayout } from './services/gemini';
 import { LiveAgent } from './components/LiveAgent';
 import { LoginModal } from './components/LoginModal';
 import { 
@@ -30,7 +30,14 @@ import {
   LogIn,
   History,
   Clock,
-  LogOut
+  LogOut,
+  LayoutTemplate,
+  Code,
+  X,
+  ZoomIn,
+  Plus,
+  ImagePlus,
+  ArrowRightCircle
 } from 'lucide-react';
 
 const LOADING_MESSAGES = [
@@ -63,8 +70,20 @@ const App: React.FC = () => {
   const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
   
+  // Creative Studio State
+  const [creativeTab, setCreativeTab] = useState<'image' | 'sku'>('image');
   const [isEditingImage, setIsEditingImage] = useState(false);
   const [editedImageUrl, setEditedImageUrl] = useState<string | null>(null);
+  const [isGeneratingSku, setIsGeneratingSku] = useState(false);
+  const [skuHtml, setSkuHtml] = useState<string | null>(null);
+  const [skuStyle, setSkuStyle] = useState<string>('High Impact');
+  
+  // Assets & SKU Image Replacement
+  const [assets, setAssets] = useState<string[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  
+  // Lightbox State
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,7 +125,15 @@ const App: React.FC = () => {
     } else if (item.mode === AppMode.VEO_VIDEO) {
       setGeneratedVideoUrl(item.data);
     } else if (item.mode === AppMode.IMAGE_EDIT) {
-      setEditedImageUrl(item.data);
+      // Check if it's SKU data (string starting with <div) or Image URL
+      const dataStr = item.data as string;
+      if (dataStr.trim().startsWith('<div')) {
+         setCreativeTab('sku');
+         setSkuHtml(dataStr);
+      } else {
+         setCreativeTab('image');
+         setEditedImageUrl(dataStr);
+      }
     }
   };
 
@@ -118,9 +145,14 @@ const App: React.FC = () => {
       reader.onloadend = () => {
         const base64 = reader.result as string;
         setSelectedImage(base64);
+        setAssets([base64]); // Init assets with original
+        setSelectedAsset(base64);
+        
+        // Reset states
         setAnalysisResult(null);
         setGeneratedVideoUrl(null);
         setEditedImageUrl(null);
+        setSkuHtml(null);
       };
       reader.readAsDataURL(file);
     }
@@ -236,6 +268,8 @@ const App: React.FC = () => {
         prompt
       );
       setEditedImageUrl(newImageUrl);
+      setAssets(prev => [...prev, newImageUrl]); // Add to asset library
+      setSelectedAsset(newImageUrl); // Auto select new asset
       addToHistory(AppMode.IMAGE_EDIT, "创意图片编辑", newImageUrl);
     } catch (error) {
       alert("图片编辑失败。");
@@ -244,9 +278,82 @@ const App: React.FC = () => {
     }
   };
 
+  // Inject generated image into the first available placeholder in SKU HTML
+  const handleInsertToDetail = () => {
+    if (!editedImageUrl || !skuHtml) {
+      if (!skuHtml) {
+        alert("请先生成 SKU 详情页框架，再插入图片。");
+        setCreativeTab('sku');
+      }
+      return;
+    }
+
+    // Switch to SKU tab
+    setCreativeTab('sku');
+    
+    // Find the first placeholder image string and replace it
+    const placeholderRegex = /https:\/\/via\.placeholder\.com\/[^\s"']+/;
+    const match = skuHtml.match(placeholderRegex);
+    
+    if (match) {
+       const newHtml = skuHtml.replace(match[0], editedImageUrl);
+       setSkuHtml(newHtml);
+       alert("已成功插入到详情页！");
+    } else {
+       // If no placeholder, try to append? Or just alert.
+       alert("未找到空闲的图片占位符，请手动替换或生成新的布局。");
+    }
+  };
+
+  const handleGenerateSku = async () => {
+    if (!selectedImage) return;
+    setIsGeneratingSku(true);
+    try {
+      const analysisContext = analysisResult ? analysisResult.text : "";
+      const html = await generateSkuUiLayout(
+        getBase64Data(selectedImage),
+        mimeType,
+        analysisContext,
+        skuStyle
+      );
+      setSkuHtml(html);
+      addToHistory(AppMode.IMAGE_EDIT, `SKU 详情页 (${skuStyle})`, html);
+    } catch (error) {
+      alert("详情页生成失败。");
+    } finally {
+      setIsGeneratingSku(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert(`已复制: ${text}`);
+  };
+
+  // Handle clicking on the rendered SKU HTML
+  const handleSkuPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
+     // Check if target is an image
+     const target = e.target as HTMLElement;
+     if (target.tagName === 'IMG') {
+        const img = target as HTMLImageElement;
+        // If we have a selected asset, replace the source
+        if (selectedAsset) {
+           // We need to update the string state `skuHtml`
+           // This is a bit tricky with raw string replacement, so we'll use a unique identifier logic if possible, 
+           // but replacing by exact `src` match is simplest for this demo level.
+           if (skuHtml) {
+              // We replace the EXACT source string of the clicked image with the new asset
+              // Note: This replaces ALL instances of that placeholder if duplicates exist, which is usually fine or desired for placeholders.
+              const srcToReplace = img.getAttribute('src');
+              if (srcToReplace) {
+                 const newHtml = skuHtml.split(srcToReplace).join(selectedAsset);
+                 setSkuHtml(newHtml);
+              }
+           }
+        } else {
+           alert("请先在左侧素材库选择一张图片！");
+        }
+     }
   };
 
   // --- Formatting Helper (Replaces Symbols with HTML) ---
@@ -330,6 +437,27 @@ const App: React.FC = () => {
         }}
       />
 
+      {/* Image Lightbox / Fullscreen Preview */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-8 animate-fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2 rounded-full"
+            onClick={() => setPreviewImage(null)}
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={previewImage} 
+            alt="Full Preview" 
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-zoom-in select-none"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-72 bg-white border-r border-slate-200 flex flex-col p-6 z-10 flex-shrink-0">
         <div className="flex items-center gap-3 mb-8 px-2">
@@ -381,7 +509,7 @@ const App: React.FC = () => {
                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-slate-700 truncate group-hover:text-indigo-700">{item.title}</p>
                           <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                            {item.mode === AppMode.ANALYSIS ? "分析报告" : item.mode === AppMode.VEO_VIDEO ? "视频" : "图片"} 
+                            {item.mode === AppMode.ANALYSIS ? "分析报告" : item.mode === AppMode.VEO_VIDEO ? "视频" : (item.data.toString().startsWith('<div') ? "SKU详情页" : "图片编辑")} 
                             • <Clock size={10} /> 刚刚
                           </p>
                        </div>
@@ -487,12 +615,56 @@ const App: React.FC = () => {
                   {/* Mode Specific Controls */}
                   
                   {activeMode === AppMode.IMAGE_EDIT && (
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                       {["宋干节水枪大战背景", "曼谷街头夜市背景", "极简白色摄影棚", "热带海滩阳光背景"].map((preset, i) => (
-                         <button key={i} onClick={() => setPrompt(preset)} className="text-sm px-4 py-2 bg-pink-50 text-pink-700 rounded-full border border-pink-100 hover:bg-pink-100 transition-colors whitespace-nowrap">
-                           {preset}
-                         </button>
-                       ))}
+                    <div className="space-y-4">
+                       {/* Creative Mode Tabs */}
+                       <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                          <button
+                            onClick={() => { setCreativeTab('image'); }}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                              creativeTab === 'image' 
+                                ? 'bg-white shadow-sm text-indigo-600' 
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            <Palette size={16} /> 图片魔法编辑
+                          </button>
+                          <button
+                            onClick={() => { setCreativeTab('sku'); }}
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                              creativeTab === 'sku' 
+                                ? 'bg-white shadow-sm text-indigo-600' 
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            <LayoutTemplate size={16} /> SKU 详情页生成
+                          </button>
+                       </div>
+
+                       {creativeTab === 'image' ? (
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {["宋干节水枪大战背景", "曼谷街头夜市背景", "极简白色摄影棚", "热带海滩阳光背景"].map((preset, i) => (
+                              <button key={i} onClick={() => setPrompt(preset)} className="text-sm px-4 py-2 bg-pink-50 text-pink-700 rounded-full border border-pink-100 hover:bg-pink-100 transition-colors whitespace-nowrap">
+                                {preset}
+                              </button>
+                            ))}
+                          </div>
+                       ) : (
+                          <div className="flex gap-3">
+                             {["Minimalist", "High Impact", "Feature Comparison"].map((style) => (
+                               <button 
+                                 key={style} 
+                                 onClick={() => setSkuStyle(style)}
+                                 className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                                    skuStyle === style 
+                                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                                 }`}
+                               >
+                                 {style} 风格
+                               </button>
+                             ))}
+                          </div>
+                       )}
                     </div>
                   )}
 
@@ -522,22 +694,33 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  <div>
-                    <label className="block text-base font-medium text-slate-700 mb-2">
-                      {activeMode === AppMode.IMAGE_EDIT ? "编辑指令 / 场景" : 
-                       activeMode === AppMode.VEO_VIDEO ? "视频描述" : "额外说明 (可选)"}
-                    </label>
-                    <textarea 
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder={
-                        activeMode === AppMode.IMAGE_EDIT ? "例如：去除背景并放在木桌上..." :
-                        activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." :
-                        "例如：这个在曼谷流行吗？"
-                      }
-                      className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-base min-h-[120px]"
-                    />
-                  </div>
+                  {/* Context Aware Text Input */}
+                  {(creativeTab === 'image' || activeMode !== AppMode.IMAGE_EDIT) && (
+                    <div>
+                      <label className="block text-base font-medium text-slate-700 mb-2">
+                        {activeMode === AppMode.IMAGE_EDIT ? "编辑指令 / 场景" : 
+                         activeMode === AppMode.VEO_VIDEO ? "视频描述" : "额外说明 (可选)"}
+                      </label>
+                      <textarea 
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder={
+                          activeMode === AppMode.IMAGE_EDIT ? "例如：去除背景并放在木桌上..." :
+                          activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." :
+                          "例如：这个在曼谷流行吗？"
+                        }
+                        className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-base min-h-[120px]"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* SKU UI Disclaimer */}
+                  {activeMode === AppMode.IMAGE_EDIT && creativeTab === 'sku' && (
+                     <div className="bg-indigo-50 p-4 rounded-xl text-indigo-700 text-sm leading-relaxed">
+                        <p className="font-bold flex items-center gap-2 mb-1"><Sparkles size={14}/> 智能 UI 引擎</p>
+                        Gemini 将根据产品分析自动预埋图片占位符。您可以点击左侧素材库，再点击预览图中的空白位进行填充。
+                     </div>
+                  )}
 
                   <div className="flex justify-end">
                     {activeMode === AppMode.ANALYSIS && (
@@ -564,7 +747,7 @@ const App: React.FC = () => {
                       </button>
                     )}
 
-                    {activeMode === AppMode.IMAGE_EDIT && (
+                    {activeMode === AppMode.IMAGE_EDIT && creativeTab === 'image' && (
                       <button 
                         onClick={handleEditImage} 
                         disabled={!selectedImage || isEditingImage}
@@ -572,6 +755,17 @@ const App: React.FC = () => {
                       >
                         {isEditingImage ? <Loader2 className="animate-spin" size={24}/> : <Wand2 size={24}/>}
                         编辑图片
+                      </button>
+                    )}
+
+                    {activeMode === AppMode.IMAGE_EDIT && creativeTab === 'sku' && (
+                       <button 
+                        onClick={handleGenerateSku} 
+                        disabled={!selectedImage || isGeneratingSku}
+                        className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-all font-medium text-lg"
+                      >
+                        {isGeneratingSku ? <Loader2 className="animate-spin" size={24}/> : <LayoutTemplate size={24}/>}
+                        生成 SKU 详情页
                       </button>
                     )}
                   </div>
@@ -746,32 +940,127 @@ const App: React.FC = () => {
              </div>
           )}
 
-          {/* === IMAGE EDIT MODULE === */}
-          {activeMode === AppMode.IMAGE_EDIT && editedImageUrl && (
-            <div className="bg-white p-10 rounded-2xl shadow-sm border border-slate-100 animate-fade-in">
-              <h3 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-3 justify-center">
-                <Palette className="text-pink-500" size={28} /> 编辑结果对比
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                 <div className="space-y-4">
-                   <div className="flex justify-between items-center">
-                      <span className="text-base font-semibold text-slate-500">原始图片</span>
-                   </div>
-                   <div className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-                     <img src={selectedImage!} alt="Original" className="w-full h-full object-contain" />
-                   </div>
-                 </div>
-                 <div className="space-y-4">
-                   <div className="flex justify-between items-center">
-                      <span className="text-base font-semibold text-pink-600">Gemini 生成</span>
-                      <a href={editedImageUrl} download="edited_image.png" className="text-sm text-indigo-600 hover:underline">下载</a>
-                   </div>
-                   <div className="relative aspect-square rounded-xl overflow-hidden border border-pink-200 shadow-md bg-white">
-                     <img src={editedImageUrl} alt="Edited" className="w-full h-full object-contain" />
-                   </div>
-                 </div>
-              </div>
-            </div>
+          {/* === IMAGE EDIT MODULE (Includes SKU Generator) === */}
+          {activeMode === AppMode.IMAGE_EDIT && (
+             <div className="animate-fade-in">
+                {/* Image Edit Result */}
+                {creativeTab === 'image' && editedImageUrl && (
+                  <div className="bg-white p-10 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-3 justify-center">
+                      <Palette className="text-pink-500" size={28} /> 编辑结果对比
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                       <div className="space-y-4">
+                         <div className="flex justify-between items-center">
+                            <span className="text-base font-semibold text-slate-500">原始图片</span>
+                         </div>
+                         <div className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50 group cursor-zoom-in"
+                              onClick={() => setPreviewImage(selectedImage)}>
+                           <img src={selectedImage!} alt="Original" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
+                           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <ZoomIn className="text-white/80" size={32}/>
+                           </div>
+                         </div>
+                       </div>
+                       <div className="space-y-4">
+                         <div className="flex justify-between items-center">
+                            <span className="text-base font-semibold text-pink-600">Gemini 生成</span>
+                            <div className="flex gap-4">
+                              <button 
+                                onClick={handleInsertToDetail}
+                                className="text-sm flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+                              >
+                                <ArrowRightCircle size={14} /> 插入详情页
+                              </button>
+                              <a href={editedImageUrl} download="edited_image.png" className="text-sm text-slate-500 hover:underline">下载</a>
+                            </div>
+                         </div>
+                         <div className="relative aspect-square rounded-xl overflow-hidden border border-pink-200 shadow-md bg-white group cursor-zoom-in"
+                              onClick={() => setPreviewImage(editedImageUrl)}>
+                           <img src={editedImageUrl} alt="Edited" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
+                           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <ZoomIn className="text-white/80" size={32}/>
+                           </div>
+                         </div>
+                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SKU Generator Result with Asset Library */}
+                {creativeTab === 'sku' && skuHtml && (
+                  <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 flex gap-8">
+                     
+                     {/* LEFT: Asset Library */}
+                     <div className="w-48 flex-shrink-0 flex flex-col gap-4">
+                        <div className="flex items-center gap-2 text-slate-700 font-bold">
+                           <ImagePlus size={20} /> 素材库
+                        </div>
+                        <p className="text-xs text-slate-400">点击素材，再点击右侧空白位替换</p>
+                        
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-2 max-h-[600px] scrollbar-hide">
+                           {assets.map((assetUrl, idx) => (
+                              <div 
+                                key={idx}
+                                onClick={() => setSelectedAsset(assetUrl)}
+                                className={`relative aspect-square rounded-lg border-2 overflow-hidden cursor-pointer transition-all hover:scale-105 ${selectedAsset === assetUrl ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}
+                              >
+                                 <img src={assetUrl} alt={`Asset ${idx}`} className="w-full h-full object-cover" />
+                                 {idx === 0 && <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 rounded">原图</div>}
+                              </div>
+                           ))}
+                           <div 
+                             onClick={() => fileInputRef.current?.click()}
+                             className="aspect-square rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"
+                           >
+                              <Plus size={24} />
+                              <span className="text-xs mt-1">添加</span>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* RIGHT: Preview */}
+                     <div className="flex-1 flex flex-col items-center">
+                        <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                          <LayoutTemplate className="text-indigo-600" size={24} /> 
+                          SKU 详情页预览 ({skuStyle})
+                        </h3>
+                        
+                        {/* Mobile Simulator Frame */}
+                        <div className="relative border-8 border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl bg-white w-[375px] h-[700px]">
+                            {/* Status Bar Mock */}
+                            <div className="h-6 bg-black w-full absolute top-0 z-20 flex justify-between px-6 items-center">
+                              <div className="text-[10px] text-white font-medium">9:41</div>
+                              <div className="flex gap-1">
+                                  <div className="w-3 h-3 bg-white rounded-full opacity-20"></div>
+                                  <div className="w-3 h-3 bg-white rounded-full opacity-20"></div>
+                              </div>
+                            </div>
+                            
+                            {/* Dynamic HTML Content */}
+                            <div 
+                              className="h-full w-full overflow-y-auto pt-6 scrollbar-hide"
+                              onClick={handleSkuPreviewClick}
+                            >
+                              <div dangerouslySetInnerHTML={{ __html: skuHtml }} />
+                            </div>
+                            
+                            {/* Home Indicator */}
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-black rounded-full z-20 opacity-20"></div>
+                        </div>
+
+                        <div className="mt-8 flex gap-4">
+                            <button 
+                              onClick={() => copyToClipboard(skuHtml)}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
+                            >
+                              <Code size={18} /> 复制代码
+                            </button>
+                        </div>
+                     </div>
+                  </div>
+                )}
+             </div>
           )}
 
           {/* === LIVE AGENT MODULE (Always Mounted, Hidden when inactive) === */}

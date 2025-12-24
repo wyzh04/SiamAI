@@ -196,3 +196,71 @@ export const editProductImage = async (
     throw error;
   }
 };
+
+/**
+ * Generate HTML/Tailwind layout for SKU detail page
+ */
+export const generateSkuUiLayout = async (
+  base64Image: string,
+  mimeType: string,
+  analysisText: string,
+  style: string
+): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const prompt = `
+    You are an expert UI/UX designer for E-commerce (Shopee/Lazada/TikTok Shop).
+    Create a responsive HTML component using Tailwind CSS for a product detail section.
+    
+    Goal: Create a highly converting detail page layout that intersperses selling point text with images.
+    
+    Input Analysis: "${analysisText || 'Analyze the image to find selling points.'}"
+    Target Style: "${style}"
+
+    Requirements:
+    1. **Layout Structure**: Use a mobile-first column layout.
+    2. **Selling Points**: Extract 3-4 KEY selling points (e.g., Material, Function, Size, Scenario).
+    3. **Image Placeholders**: For EACH selling point, insert an \`<img>\` tag.
+       - **CRITICAL**: The \`src\` of these images MUST be a placeholder URL that describes what kind of image is needed.
+       - Format: \`https://via.placeholder.com/400x300/e2e8f0/64748b?text=PLACEHOLDER_TEXT\`
+       - Replace \`PLACEHOLDER_TEXT\` with the specific type of image needed, e.g., "Detail+Shot", "Waterproof+Test", "Lifestyle+Scene", "Size+Chart".
+       - Add a specific class \`editable-image\` to all these images.
+       - Add \`cursor-pointer\` class and hover effects to indicate they are interactive.
+    4. **Header Image**: Use the provided product image as the main header image (use \`__PRODUCT_IMG_SRC__\` placeholder).
+    5. **Buttons**: Sticky bottom "Buy Now" button.
+    6. **Styling**: Use Tailwind. Make it look professional and Thai-market friendly (vibrant but trustworthy).
+    7. **Output**: Return ONLY raw HTML. No markdown blocks.
+
+    Example structure logic:
+    - [Main Image]
+    - [Price & Title]
+    - [Selling Point 1 Title] -> [Description] -> [Image Placeholder: Detail Shot]
+    - [Selling Point 2 Title] -> [Description] -> [Image Placeholder: Usage Scene]
+    - [Specs Table]
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Image } },
+          { text: prompt }
+        ]
+      }
+    });
+
+    let html = response.text || "";
+    // Cleanup potential markdown formatting
+    html = html.replace(/```html/g, '').replace(/```/g, '').trim();
+    
+    // Inject the real image back into the main slot
+    const imageUrl = `data:${mimeType};base64,${base64Image}`;
+    html = html.replace(/__PRODUCT_IMG_SRC__/g, imageUrl);
+
+    return html;
+  } catch (error) {
+    console.error("SKU UI Generation failed:", error);
+    throw error;
+  }
+};
