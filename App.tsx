@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppMode, AnalysisData } from './types';
+import { AppMode, AnalysisData, User, HistoryItem } from './types';
 import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt } from './services/gemini';
 import { LiveAgent } from './components/LiveAgent';
+import { LoginModal } from './components/LoginModal';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -25,7 +26,11 @@ import {
   Sparkles,
   Palette,
   Bot,
-  Film
+  Film,
+  LogIn,
+  History,
+  Clock,
+  LogOut
 } from 'lucide-react';
 
 const LOADING_MESSAGES = [
@@ -38,6 +43,12 @@ const LOADING_MESSAGES = [
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.ANALYSIS);
+  
+  // User & Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
   const [prompt, setPrompt] = useState('');
@@ -70,6 +81,35 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isGeneratingVideo]);
 
+  // Helper to add history
+  const addToHistory = (mode: AppMode, title: string, data: any, thumb?: string) => {
+    if (!currentUser) return;
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      mode,
+      title,
+      data,
+      thumbnail: thumb || selectedImage || undefined
+    };
+    setHistory(prev => [newItem, ...prev]);
+  };
+
+  const restoreHistoryItem = (item: HistoryItem) => {
+    setActiveMode(item.mode);
+    if (item.thumbnail) {
+      setSelectedImage(item.thumbnail);
+    }
+    
+    if (item.mode === AppMode.ANALYSIS) {
+      setAnalysisResult(item.data);
+    } else if (item.mode === AppMode.VEO_VIDEO) {
+      setGeneratedVideoUrl(item.data);
+    } else if (item.mode === AppMode.IMAGE_EDIT) {
+      setEditedImageUrl(item.data);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -100,6 +140,10 @@ const App: React.FC = () => {
         prompt
       );
       setAnalysisResult(data);
+      // Auto save to history
+      const title = data.keywords && data.keywords.length > 0 ? data.keywords[0] : "未命名产品分析";
+      addToHistory(AppMode.ANALYSIS, title, data);
+
     } catch (error) {
       alert("分析失败，请检查控制台。");
     } finally {
@@ -151,6 +195,7 @@ const App: React.FC = () => {
     try {
       const videoUrl = await performGeneration();
       setGeneratedVideoUrl(videoUrl);
+      addToHistory(AppMode.VEO_VIDEO, `Veo 视频 (${videoAspectRatio})`, videoUrl);
     } catch (error: any) {
       console.error("Video Generation Error:", error);
       
@@ -163,6 +208,7 @@ const App: React.FC = () => {
              // Retry generation
              const retryVideoUrl = await performGeneration(true);
              setGeneratedVideoUrl(retryVideoUrl);
+             addToHistory(AppMode.VEO_VIDEO, `Veo 视频 (${videoAspectRatio})`, retryVideoUrl);
              return; // Success on retry
           } catch (retryError) {
              console.error("Retry failed:", retryError);
@@ -190,6 +236,7 @@ const App: React.FC = () => {
         prompt
       );
       setEditedImageUrl(newImageUrl);
+      addToHistory(AppMode.IMAGE_EDIT, "创意图片编辑", newImageUrl);
     } catch (error) {
       alert("图片编辑失败。");
     } finally {
@@ -273,9 +320,19 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
+      {/* Login Modal */}
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setIsLoginModalOpen(false);
+        }}
+      />
+
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col p-6 z-10">
-        <div className="flex items-center gap-3 mb-10 px-2">
+      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col p-6 z-10 flex-shrink-0">
+        <div className="flex items-center gap-3 mb-8 px-2">
           <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
             <Globe className="text-white" size={24} />
           </div>
@@ -284,20 +341,92 @@ const App: React.FC = () => {
           </span>
         </div>
 
-        <nav className="flex-1 space-y-2">
+        <nav className="space-y-2 mb-6">
           {renderSidebarItem(AppMode.ANALYSIS, <LayoutDashboard size={22} />, "市场分析")}
           {renderSidebarItem(AppMode.VEO_VIDEO, <Video size={22} />, "Veo 视频工作室")}
           {renderSidebarItem(AppMode.IMAGE_EDIT, <Wand2 size={22} />, "创意工作室")}
           {renderSidebarItem(AppMode.LIVE_AGENT, <MessageSquareText size={22} />, "AI 顾问咨询")}
         </nav>
 
-        <div className="mt-auto p-5 bg-slate-50 rounded-xl border border-slate-100">
-          <p className="text-sm text-slate-500 mb-3">Powered by</p>
-          <div className="flex flex-wrap gap-2">
-            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 text-sm rounded-md font-medium">Gemini 3.0</span>
-            <span className="px-2.5 py-1 bg-purple-100 text-purple-700 text-sm rounded-md font-medium">Veo</span>
-            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm rounded-md font-medium">Live API</span>
-          </div>
+        {/* User History Section */}
+        <div className="flex-1 overflow-y-auto min-h-0 border-t border-slate-100 pt-6">
+           <div className="px-2 mb-3 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">最近使用</span>
+              {!currentUser && <span className="text-xs text-indigo-500 cursor-pointer" onClick={() => setIsLoginModalOpen(true)}>登录保存</span>}
+           </div>
+           
+           {currentUser ? (
+             <div className="space-y-2">
+                {history.length === 0 ? (
+                  <div className="text-center py-6 text-slate-400 text-sm">
+                    <History size={24} className="mx-auto mb-2 opacity-50"/>
+                    暂无历史记录
+                  </div>
+                ) : (
+                  history.map((item) => (
+                    <div 
+                      key={item.id}
+                      onClick={() => restoreHistoryItem(item)}
+                      className="group flex gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                       <div className="w-10 h-10 rounded-md bg-slate-200 overflow-hidden flex-shrink-0 border border-slate-100">
+                          {item.thumbnail ? (
+                            <img src={item.thumbnail} className="w-full h-full object-cover" alt="thumb" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400">
+                              <Search size={14}/>
+                            </div>
+                          )}
+                       </div>
+                       <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate group-hover:text-indigo-700">{item.title}</p>
+                          <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                            {item.mode === AppMode.ANALYSIS ? "分析报告" : item.mode === AppMode.VEO_VIDEO ? "视频" : "图片"} 
+                            • <Clock size={10} /> 刚刚
+                          </p>
+                       </div>
+                    </div>
+                  ))
+                )}
+             </div>
+           ) : (
+             <div 
+               onClick={() => setIsLoginModalOpen(true)}
+               className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-all group"
+             >
+                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm group-hover:scale-110 transition-transform">
+                   <LogIn size={18} className="text-slate-400 group-hover:text-indigo-600"/>
+                </div>
+                <p className="text-sm text-slate-500 group-hover:text-indigo-700">登录查看历史记录</p>
+             </div>
+           )}
+        </div>
+
+        {/* User Profile Footer */}
+        <div className="mt-auto pt-5 border-t border-slate-100">
+          {currentUser ? (
+            <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-50 border border-slate-100">
+               <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-full bg-white shadow-sm" />
+               <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-800 truncate">{currentUser.name}</p>
+                  <p className="text-xs text-slate-500">专业版用户</p>
+               </div>
+               <button 
+                 onClick={() => {setCurrentUser(null); setHistory([]);}} 
+                 className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+               >
+                 <LogOut size={16} />
+               </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsLoginModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl hover:bg-slate-800 transition-all shadow-md"
+            >
+              <LogIn size={18} />
+              登录 / 注册
+            </button>
+          )}
         </div>
       </aside>
 
@@ -311,7 +440,14 @@ const App: React.FC = () => {
             {activeMode === AppMode.LIVE_AGENT && "AI 专家问答"}
           </h1>
           <div className="flex items-center gap-4">
-            <span className="text-base text-slate-500">目标市场: 🇹🇭 泰国</span>
+            <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-sm font-medium rounded-full border border-indigo-100 flex items-center gap-1">
+              🇹🇭 泰国市场
+            </span>
+            {currentUser && (
+               <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
+                  <span className="text-xs font-bold">{currentUser.name[0]}</span>
+               </div>
+            )}
           </div>
         </header>
 

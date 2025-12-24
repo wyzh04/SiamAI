@@ -25,6 +25,22 @@ export interface ChatMessage {
   text: string;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  avatar: string;
+  type: 'wechat' | 'phone';
+}
+
+export interface HistoryItem {
+  id: string;
+  timestamp: number;
+  mode: AppMode;
+  title: string;
+  thumbnail?: string; // Base64 string for preview
+  data: any; // Store analysis result or video URL
+}
+
 // Helper types for AI Studio
 declare global {
   interface AIStudio {
