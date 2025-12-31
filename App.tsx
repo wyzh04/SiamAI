@@ -3,6 +3,7 @@ import { AppMode, AnalysisData, User, HistoryItem } from './types';
 import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt, generateSkuUiLayout } from './services/gemini';
 import { LiveAgent } from './components/LiveAgent';
 import { LoginModal } from './components/LoginModal';
+import { LogisticsCalculator } from './components/LogisticsCalculator';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -37,7 +38,8 @@ import {
   ZoomIn,
   Plus,
   ImagePlus,
-  ArrowRightCircle
+  ArrowRightCircle,
+  Calculator,
 } from 'lucide-react';
 
 const LOADING_MESSAGES = [
@@ -84,6 +86,7 @@ const App: React.FC = () => {
   
   // Lightbox State
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewHtmlContent, setPreviewHtmlContent] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -296,6 +299,7 @@ const App: React.FC = () => {
     const match = skuHtml.match(placeholderRegex);
     
     if (match) {
+       // Only replace the FIRST occurrence (default string.replace behavior)
        const newHtml = skuHtml.replace(match[0], editedImageUrl);
        setSkuHtml(newHtml);
        alert("已成功插入到详情页！");
@@ -338,16 +342,25 @@ const App: React.FC = () => {
         const img = target as HTMLImageElement;
         // If we have a selected asset, replace the source
         if (selectedAsset) {
-           // We need to update the string state `skuHtml`
-           // This is a bit tricky with raw string replacement, so we'll use a unique identifier logic if possible, 
-           // but replacing by exact `src` match is simplest for this demo level.
            if (skuHtml) {
-              // We replace the EXACT source string of the clicked image with the new asset
-              // Note: This replaces ALL instances of that placeholder if duplicates exist, which is usually fine or desired for placeholders.
-              const srcToReplace = img.getAttribute('src');
-              if (srcToReplace) {
-                 const newHtml = skuHtml.split(srcToReplace).join(selectedAsset);
-                 setSkuHtml(newHtml);
+              // 1. Find the index of the clicked image in the container
+              // "currentTarget" refers to the div with the onClick handler (the container)
+              const container = e.currentTarget;
+              const allImages = Array.from(container.getElementsByTagName('img'));
+              const clickedIndex = allImages.indexOf(target as HTMLImageElement);
+
+              if (clickedIndex !== -1) {
+                  // 2. Parse the current HTML string to a DOM to safely replace ONE instance
+                  const parser = new DOMParser();
+                  const doc = parser.parseFromString(skuHtml, 'text/html');
+                  const docImages = doc.getElementsByTagName('img');
+
+                  // 3. Update only the specific image at that index
+                  if (docImages[clickedIndex]) {
+                      docImages[clickedIndex].setAttribute('src', selectedAsset);
+                      // 4. Serialize back to string
+                      setSkuHtml(doc.body.innerHTML);
+                  }
               }
            }
         } else {
@@ -458,6 +471,45 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* HTML Fullscreen Preview Modal */}
+      {previewHtmlContent && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setPreviewHtmlContent(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2 rounded-full z-10"
+            onClick={() => setPreviewHtmlContent(null)}
+          >
+            <X size={24} />
+          </button>
+          
+          <div 
+            className="bg-white w-[414px] h-[85vh] rounded-3xl overflow-hidden shadow-2xl animate-zoom-in flex flex-col"
+            onClick={(e) => e.stopPropagation()} 
+          >
+             {/* Fake Status Bar */}
+             <div className="h-10 bg-slate-900 flex items-center justify-between px-6 text-white text-xs font-medium z-10 shrink-0">
+                <span>9:41</span>
+                <div className="flex gap-1.5">
+                   <div className="w-4 h-4 rounded-full border border-white/30"></div>
+                   <div className="w-4 h-4 rounded-full border border-white/30"></div>
+                </div>
+             </div>
+             
+             {/* Content */}
+             <div className="flex-1 overflow-y-auto scrollbar-hide bg-white">
+                <div dangerouslySetInnerHTML={{ __html: previewHtmlContent }} />
+             </div>
+             
+             {/* Bottom Home Indicator area */}
+             <div className="h-6 bg-white shrink-0 flex items-center justify-center">
+                <div className="w-32 h-1 bg-slate-900/20 rounded-full"></div>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-72 bg-white border-r border-slate-200 flex flex-col p-6 z-10 flex-shrink-0">
         <div className="flex items-center gap-3 mb-8 px-2">
@@ -473,6 +525,7 @@ const App: React.FC = () => {
           {renderSidebarItem(AppMode.ANALYSIS, <LayoutDashboard size={22} />, "市场分析")}
           {renderSidebarItem(AppMode.VEO_VIDEO, <Video size={22} />, "Veo 视频工作室")}
           {renderSidebarItem(AppMode.IMAGE_EDIT, <Wand2 size={22} />, "创意工作室")}
+          {renderSidebarItem(AppMode.CALCULATOR, <Calculator size={22} />, "物流定价计算")}
           {renderSidebarItem(AppMode.LIVE_AGENT, <MessageSquareText size={22} />, "AI 顾问咨询")}
         </nav>
 
@@ -565,6 +618,7 @@ const App: React.FC = () => {
             {activeMode === AppMode.ANALYSIS && "市场情报"}
             {activeMode === AppMode.VEO_VIDEO && "视频制作 (Veo)"}
             {activeMode === AppMode.IMAGE_EDIT && "创意工作室"}
+            {activeMode === AppMode.CALCULATOR && "物流与定价"}
             {activeMode === AppMode.LIVE_AGENT && "AI 专家问答"}
           </h1>
           <div className="flex items-center gap-4">
@@ -581,8 +635,8 @@ const App: React.FC = () => {
 
         <div className="p-10 max-w-[1400px] mx-auto space-y-8 pb-24">
           
-          {/* Universal Image Upload (except for Live Agent) */}
-          {activeMode !== AppMode.LIVE_AGENT && (
+          {/* Universal Image Upload (except for Live Agent AND Calculator) */}
+          {activeMode !== AppMode.LIVE_AGENT && activeMode !== AppMode.CALCULATOR && (
             <section className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
               <div className="flex gap-10 items-start">
                 <div className="w-1/3">
@@ -1051,6 +1105,12 @@ const App: React.FC = () => {
 
                         <div className="mt-8 flex gap-4">
                             <button 
+                              onClick={() => setPreviewHtmlContent(skuHtml)}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium shadow-md"
+                            >
+                              <ZoomIn size={18} /> 放大预览
+                            </button>
+                            <button 
                               onClick={() => copyToClipboard(skuHtml)}
                               className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
                             >
@@ -1061,6 +1121,11 @@ const App: React.FC = () => {
                   </div>
                 )}
              </div>
+          )}
+
+          {/* === LOGISTICS CALCULATOR MODULE === */}
+          {activeMode === AppMode.CALCULATOR && (
+            <LogisticsCalculator />
           )}
 
           {/* === LIVE AGENT MODULE (Always Mounted, Hidden when inactive) === */}

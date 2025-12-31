@@ -2,7 +2,8 @@ export enum AppMode {
   ANALYSIS = 'ANALYSIS',
   VEO_VIDEO = 'VEO_VIDEO',
   IMAGE_EDIT = 'IMAGE_EDIT',
-  LIVE_AGENT = 'LIVE_AGENT'
+  LIVE_AGENT = 'LIVE_AGENT',
+  CALCULATOR = 'CALCULATOR'
 }
 
 export interface AnalysisData {

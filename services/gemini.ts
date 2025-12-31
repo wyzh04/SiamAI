@@ -209,34 +209,63 @@ export const generateSkuUiLayout = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    You are an expert UI/UX designer for E-commerce (Shopee/Lazada/TikTok Shop).
-    Create a responsive HTML component using Tailwind CSS for a product detail section.
+    You are an expert UI/UX designer for Cross-border E-commerce targeting Thailand (Shopee/Lazada/TikTok Shop).
+    Create a highly converting, mobile-first Product Detail Page (HTML/Tailwind CSS).
     
-    Goal: Create a highly converting detail page layout that intersperses selling point text with images.
+    **Input Analysis**: "${analysisText || 'Analyze the image to find selling points.'}"
+    **Target Style**: "${style}"
+
+    **CRITICAL REQUIREMENT**: You MUST follow this specific 10-step section order to maximize conversion (Attract -> Inform -> Solve -> Imagine -> Compare -> Trust -> Proof -> Guarantee -> Action):
+
+    1. **Hero Section (3-Second Hook)**: 
+       - Large visual impact poster style. 
+       - Overlay a punchy "One-sentence Core Selling Point" + "Limited Time Offer".
+       - Image Placeholder: "Hero+Poster+Impact".
     
-    Input Analysis: "${analysisText || 'Analyze the image to find selling points.'}"
-    Target Style: "${style}"
+    2. **Product Overview (Cognition)**:
+       - Multi-angle display (Front, Side, Details) + Basic specs (Size, Color, Material).
+       - Use the main product image (placeholder \`__PRODUCT_IMG_SRC__\`) for the "Front View".
+       - Additional Placeholders: "Side+View", "Back+View".
 
-    Requirements:
-    1. **Layout Structure**: Use a mobile-first column layout.
-    2. **Selling Points**: Extract 3-4 KEY selling points (e.g., Material, Function, Size, Scenario).
-    3. **Image Placeholders**: For EACH selling point, insert an \`<img>\` tag.
-       - **CRITICAL**: The \`src\` of these images MUST be a placeholder URL that describes what kind of image is needed.
-       - Format: \`https://via.placeholder.com/400x300/e2e8f0/64748b?text=PLACEHOLDER_TEXT\`
-       - Replace \`PLACEHOLDER_TEXT\` with the specific type of image needed, e.g., "Detail+Shot", "Waterproof+Test", "Lifestyle+Scene", "Size+Chart".
-       - Add a specific class \`editable-image\` to all these images.
-       - Add \`cursor-pointer\` class and hover effects to indicate they are interactive.
-    4. **Header Image**: Use the provided product image as the main header image (use \`__PRODUCT_IMG_SRC__\` placeholder).
-    5. **Buttons**: Sticky bottom "Buy Now" button.
-    6. **Styling**: Use Tailwind. Make it look professional and Thai-market friendly (vibrant but trustworthy).
-    7. **Output**: Return ONLY raw HTML. No markdown blocks.
+    3. **Pain Points & Solutions**:
+       - Structure: "User Pain Point" -> "Product Solution" -> "Evidence".
+       - Image Placeholders: "Pain+Point+Scenario", "Solution+Demo".
 
-    Example structure logic:
-    - [Main Image]
-    - [Price & Title]
-    - [Selling Point 1 Title] -> [Description] -> [Image Placeholder: Detail Shot]
-    - [Selling Point 2 Title] -> [Description] -> [Image Placeholder: Usage Scene]
-    - [Specs Table]
+    4. **Scenario/Lifestyle (Immersion)**:
+       - Show the product being used in real Thai life contexts.
+       - Image Placeholder: "Lifestyle+Scenario".
+
+    5. **Competitor Comparison**:
+       - A comparison table or visual (Us vs. Others).
+       - Highlight advantages (Price, Quality, Function).
+       - Image Placeholder: "Comparison+Chart".
+
+    6. **Quality Details (Trust)**:
+       - Macro shots of material, stitching, or durability tests.
+       - Image Placeholders: "Material+Macro", "Durability+Test".
+
+    7. **Social Proof**:
+       - Mockup of 1-2 User Reviews/Testimonials with star ratings.
+       - Image Placeholder: "User+Review+Photo".
+
+    8. **Certificates/Trust**:
+       - Section for patents, quality checks, or brand guarantees.
+       - Image Placeholder: "Certificates+Quality".
+
+    9. **After-sales/Policies**:
+       - Clear icons/text for "7-Day Return", "Warranty", "Fast Shipping".
+
+    10. **Sticky Bottom CTA**:
+        - "Buy Now" / "Add to Cart" button with Branding.
+
+    **Technical Constraints**:
+    - Use Tailwind CSS for all styling.
+    - **Interactive Images**: For every image area, use an \`<img>\` tag with this specific source format:
+      \`https://via.placeholder.com/400x400/e2e8f0/64748b?text=TEXT_DESCRIBING_IMAGE\`
+      (e.g., text=Hero+Poster, text=Lifestyle+Scene).
+    - Add class \`editable-image\` and \`cursor-pointer\` to all images.
+    - Use the provided placeholder \`__PRODUCT_IMG_SRC__\` for the main Hero or Product Overview image.
+    - Return ONLY raw HTML string. No markdown code blocks.
   `;
 
   try {
