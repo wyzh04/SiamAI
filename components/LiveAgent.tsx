@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
-import { Send, Bot, User, Loader2, Sparkles, MessageSquarePlus, Box, Clapperboard, Image as ImageIcon, X, Copy, Check } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, MessageSquarePlus, Box, Clapperboard, Image as ImageIcon, X, Copy, Check, ArrowRightCircle, Palette, Wand2 } from 'lucide-react';
 import { AnalysisData } from '../types';
 
 interface LiveAgentProps {
   contextData?: AnalysisData | null;
+  onUsePrompt: (prompt: string) => void;
 }
 
 const SYSTEM_INSTRUCTION_BASE = `
@@ -21,14 +22,54 @@ const SYSTEM_INSTRUCTION_BASE = `
 
 【图片分析能力】：
 如果用户上传了图片（例如竞品 SKU、海报、买家秀），请分析图片的视觉元素、卖点、材质和适用场景。
-用户可能会要求你“提取提示词”，此时请生成适合 Veo 或 Midjourney 使用的英文 Prompt。
+
+【智能配图生成 (SKU 详情页专用)】：
+当用户询问“场景图建议”、“生成图片提示词”、“配图建议”或“SKU 配图”时，请不要随机生成，而是**严格按照高转化率 SKU 详情页的 5 大关键板块顺序**，为每个板块生成 1 个高质量的英文 AI 绘画 Prompt。
+这将帮助用户直接将生成的图片插入到详情页对应的位置。
+
+请依次生成以下板块的提示词：
+1. **Hero Poster (首屏海报)**: 高冲击力、大场景、光影质感，强调核心卖点 (e.g., Cinematic lighting, product hero shot)。
+2. **Lifestyle (沉浸式场景)**: 结合泰国当地生活环境，展示产品实际使用 (e.g., Bangkok cafe, tropical beach, daily life context)。
+3. **Pain Point/Solution (痛点与解决)**: 直观展示问题解决前后的对比或特定功能演示 (e.g., Problem vs Solution, water resistance test)。
+4. **Detail/Texture (材质细节)**: 微距视角，展示做工、质地或成分 (e.g., Extreme close-up, fabric texture, macro shot)。
+5. **Social Proof (买家秀)**: 模拟真实用户视角，增加信任感 (e.g., Selfie holding product, unboxing POV)。
+
+**务必严格按照以下格式输出每一个 Prompt，以便系统识别为可点击按钮**：
+**[板块名称]**
+🎨 Prompt: [英文提示词内容]
+
+(例如：
+**1. 首屏海报**
+🎨 Prompt: A bottle of sunscreen on a white sand beach, blue ocean background, bright sunlight, 4k, photorealistic)
 `;
 
-// Helper function to render formatted text
-const formatMessageText = (text: string) => {
+// Helper function to render formatted text with action buttons
+const formatMessageText = (text: string, onUsePrompt: (prompt: string) => void) => {
   const lines = text.split('\n');
   
   return lines.map((line, lineIdx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={lineIdx} className="h-3" />; // Spacer
+
+    // === Special Detection for Prompts ===
+    if (trimmed.startsWith('🎨 Prompt:') || trimmed.startsWith('🎨 Prompt：')) {
+        const promptContent = trimmed.replace(/^🎨 Prompt[:：]\s*/, '').trim();
+        return (
+            <div key={lineIdx} className="my-3 p-4 bg-purple-50 rounded-xl border border-purple-100 flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                    <Palette size={16} className="text-purple-600 mt-1 shrink-0" />
+                    <span className="text-slate-700 font-medium italic text-sm">{promptContent}</span>
+                </div>
+                <button 
+                  onClick={() => onUsePrompt(promptContent)}
+                  className="self-end flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow-sm"
+                >
+                    <Wand2 size={12} /> 一键魔法编辑
+                </button>
+            </div>
+        );
+    }
+
     // Helper for inline formatting (Bold)
     const renderInline = (content: string) => {
       const parts = content.split(/(\*\*.*?\*\*)/g);
@@ -39,9 +80,6 @@ const formatMessageText = (text: string) => {
         return part;
       });
     };
-
-    const trimmed = line.trim();
-    if (!trimmed) return <div key={lineIdx} className="h-3" />; // Spacer
 
     // Headers
     if (trimmed.startsWith('### ')) {
@@ -85,7 +123,7 @@ const formatMessageText = (text: string) => {
   });
 };
 
-export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData }) => {
+export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }) => {
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string, image?: string}[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -119,7 +157,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData }) => {
         { 
           role: 'model', 
           text: contextData 
-            ? '### 已接收市场分析报告！💡\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：如何设置变体更好卖？\n2. **视频脚本**：TikTok 爆款视频怎么拍？\n3. **卖点提炼**：泰语详情页怎么写？\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。' 
+            ? '### 已接收市场分析报告！💡\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：如何设置变体更好卖？\n2. **视频脚本**：TikTok 爆款视频怎么拍？\n3. **SKU 配图**：为详情页生成全套场景提示词。\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。' 
             : '### 你好！我是你的专属泰国市场顾问。\n\n关于选品趋势、平台规则或营销策略，有什么想问的吗？\n\n📸 **特殊功能**：您可以上传任何 SKU 图片，让我分析卖点或提取 AI 绘画/视频提示词。' 
         }
       ]);
@@ -220,11 +258,10 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData }) => {
 
   // Dynamic suggestions based on context
   const suggestions = contextData ? [
-    { text: "生成高转化 SKU 组合建议", icon: <Box size={16}/> },
-    { text: "写一个 TikTok 爆款视频脚本", icon: <Clapperboard size={16}/> },
-    { text: "分析泰语差评风险点", icon: <MessageSquarePlus size={16}/> },
-    { text: "Shopee 详情页卖点描述", icon: <Sparkles size={16}/> },
-    { text: "TikTok 详情页卖点描述", icon: <Sparkles size={16}/> }
+    { text: "生成 SKU 组合策略", icon: <Box size={16}/> },
+    { text: "生成 SKU 详情页配图", icon: <ImageIcon size={16}/> },
+    { text: "写一个 TikTok 视频脚本", icon: <Clapperboard size={16}/> },
+    { text: "分析差评风险", icon: <MessageSquarePlus size={16}/> },
   ] : [
     { text: "帮我写 3 个泰语 TikTok 标题", icon: <MessageSquarePlus size={16}/> },
     { text: "目前曼谷流行什么产品？", icon: <Sparkles size={16}/> },
@@ -278,7 +315,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData }) => {
                 }`}>
                   {msg.role === 'model' ? (
                     <div className="w-full pr-8">
-                      {formatMessageText(msg.text)}
+                      {formatMessageText(msg.text, onUsePrompt)}
                       {/* Copy Button */}
                       <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                          <button 

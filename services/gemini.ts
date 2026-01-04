@@ -209,9 +209,13 @@ export const generateSkuUiLayout = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    You are an expert UI/UX designer for Cross-border E-commerce targeting Thailand (Shopee/Lazada/TikTok Shop).
+    You are an expert UI/UX designer for Cross-border E-commerce targeting Thailand.
     Create a highly converting, mobile-first Product Detail Page (HTML/Tailwind CSS).
     
+    **Language Requirement**: 
+    All visible text (Headings, Descriptions, Selling Points, Buttons) MUST be in **Simplified Chinese (简体中文)** first. 
+    (The user will verify the copy in Chinese, and translate it to Thai later).
+
     **Input Analysis**: "${analysisText || 'Analyze the image to find selling points.'}"
     **Target Style**: "${style}"
 
@@ -220,37 +224,37 @@ export const generateSkuUiLayout = async (
     1. **Hero Section (3-Second Hook)**: 
        - Large visual impact poster style. 
        - Overlay a punchy "One-sentence Core Selling Point" + "Limited Time Offer".
-       - Image Placeholder: "Hero+Poster+Impact".
+       - Image Placeholder: "Poster+Key+Visual+Impact".
     
     2. **Product Overview (Cognition)**:
        - Multi-angle display (Front, Side, Details) + Basic specs (Size, Color, Material).
        - Use the main product image (placeholder \`__PRODUCT_IMG_SRC__\`) for the "Front View".
-       - Additional Placeholders: "Side+View", "Back+View".
+       - Additional Placeholders: "Side+View+Clean", "Back+View+Details".
 
     3. **Pain Points & Solutions**:
        - Structure: "User Pain Point" -> "Product Solution" -> "Evidence".
-       - Image Placeholders: "Pain+Point+Scenario", "Solution+Demo".
+       - Image Placeholders: "User+Pain+Point+Scenario", "Solution+Demonstration".
 
     4. **Scenario/Lifestyle (Immersion)**:
        - Show the product being used in real Thai life contexts.
-       - Image Placeholder: "Lifestyle+Scenario".
+       - Image Placeholder: "Lifestyle+In+Use+Context".
 
     5. **Competitor Comparison**:
        - A comparison table or visual (Us vs. Others).
        - Highlight advantages (Price, Quality, Function).
-       - Image Placeholder: "Comparison+Chart".
+       - Image Placeholder: "Comparison+Chart+Visual".
 
     6. **Quality Details (Trust)**:
        - Macro shots of material, stitching, or durability tests.
-       - Image Placeholders: "Material+Macro", "Durability+Test".
+       - Image Placeholders: "Material+Zoom+Texture", "Durability+Test+Result".
 
     7. **Social Proof**:
        - Mockup of 1-2 User Reviews/Testimonials with star ratings.
-       - Image Placeholder: "User+Review+Photo".
+       - Image Placeholder: "User+Selfie+With+Product".
 
     8. **Certificates/Trust**:
        - Section for patents, quality checks, or brand guarantees.
-       - Image Placeholder: "Certificates+Quality".
+       - Image Placeholder: "Official+Certificate+Badge".
 
     9. **After-sales/Policies**:
        - Clear icons/text for "7-Day Return", "Warranty", "Fast Shipping".
@@ -261,9 +265,11 @@ export const generateSkuUiLayout = async (
     **Technical Constraints**:
     - Use Tailwind CSS for all styling.
     - **Interactive Images**: For every image area, use an \`<img>\` tag with this specific source format:
-      \`https://via.placeholder.com/400x400/e2e8f0/64748b?text=TEXT_DESCRIBING_IMAGE\`
-      (e.g., text=Hero+Poster, text=Lifestyle+Scene).
+      \`https://via.placeholder.com/400x400/e2e8f0/64748b?text=Specific+Visual+Description\`
+      (e.g., text=Fabric+Texture+Zoom, text=Model+Holding+Bag, text=Waterproof+Test).
+      The text MUST be descriptive enough for the user to know exactly what image to upload there. Do NOT use generic text like "Image" or "Photo".
     - Add class \`editable-image\` and \`cursor-pointer\` to all images.
+    - Add \`crossorigin="anonymous"\` attribute to all \`<img>\` tags.
     - Use the provided placeholder \`__PRODUCT_IMG_SRC__\` for the main Hero or Product Overview image.
     - Return ONLY raw HTML string. No markdown code blocks.
   `;
@@ -287,9 +293,67 @@ export const generateSkuUiLayout = async (
     const imageUrl = `data:${mimeType};base64,${base64Image}`;
     html = html.replace(/__PRODUCT_IMG_SRC__/g, imageUrl);
 
+    // Replace external via.placeholder.com URLs with local inline SVG Data URIs
+    html = html.replace(/https:\/\/via\.placeholder\.com\/[^\s"']+/g, (matchUrl) => {
+        try {
+           const urlObj = new URL(matchUrl);
+           const textParam = urlObj.searchParams.get('text');
+           const text = textParam ? textParam.replace(/\+/g, ' ') : 'Image Area';
+           
+           const svgString = `
+            <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+              <rect width="100%" height="100%" fill="#f1f5f9"/>
+              <rect width="98%" height="98%" x="1%" y="1%" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-dasharray="12,12"/>
+              <text x="50%" y="45%" font-family="sans-serif" font-size="24" font-weight="bold" fill="#94a3b8" dominant-baseline="middle" text-anchor="middle">REPLACE</text>
+              <text x="50%" y="55%" font-family="sans-serif" font-size="16" fill="#64748b" dominant-baseline="middle" text-anchor="middle">${text}</text>
+            </svg>
+           `.trim();
+           
+           const base64Svg = btoa(unescape(encodeURIComponent(svgString)));
+           return `data:image/svg+xml;base64,${base64Svg}`;
+        } catch (e) {
+           return matchUrl;
+        }
+    });
+
     return html;
   } catch (error) {
     console.error("SKU UI Generation failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * Translate HTML Content to Thai
+ */
+export const translateHtmlToThai = async (htmlContent: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prompt = `
+    You are a professional translator for Thai E-commerce.
+    Translate the visible text content of the following HTML code from **Simplified Chinese** to **Thai**.
+    
+    **Rules**:
+    1. Keep all HTML tags, structure, classes, and styles EXACTLY the same.
+    2. Only translate human-readable text (headings, paragraphs, button labels).
+    3. Do NOT translate technical attribute values (like class names, ids, data attributes).
+    4. Ensure the Thai translation is natural and uses e-commerce terminology (e.g., Shopee/Lazada style).
+    5. Return ONLY the translated HTML string. No markdown blocks.
+
+    Input HTML:
+    ${htmlContent}
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt
+    });
+
+    let translatedHtml = response.text || "";
+    translatedHtml = translatedHtml.replace(/```html/g, '').replace(/```/g, '').trim();
+    return translatedHtml;
+  } catch (error) {
+    console.error("Translation failed:", error);
     throw error;
   }
 };

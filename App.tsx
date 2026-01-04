@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppMode, AnalysisData, User, HistoryItem } from './types';
-import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt, generateSkuUiLayout } from './services/gemini';
+import { analyzeProductForThaiMarket, generateProductVideo, editProductImage, enhanceVideoPrompt, generateSkuUiLayout, translateHtmlToThai } from './services/gemini';
 import { LiveAgent } from './components/LiveAgent';
 import { LoginModal } from './components/LoginModal';
 import { LogisticsCalculator } from './components/LogisticsCalculator';
+import { toPng } from 'html-to-image';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -40,6 +41,10 @@ import {
   ImagePlus,
   ArrowRightCircle,
   Calculator,
+  Download,
+  Image as ImageIcon,
+  PenLine,
+  Languages
 } from 'lucide-react';
 
 const LOADING_MESSAGES = [
@@ -79,6 +84,8 @@ const App: React.FC = () => {
   const [isGeneratingSku, setIsGeneratingSku] = useState(false);
   const [skuHtml, setSkuHtml] = useState<string | null>(null);
   const [skuStyle, setSkuStyle] = useState<string>('High Impact');
+  const [isGeneratingSkuImage, setIsGeneratingSkuImage] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   
   // Assets & SKU Image Replacement
   const [assets, setAssets] = useState<string[]>([]);
@@ -89,6 +96,8 @@ const App: React.FC = () => {
   const [previewHtmlContent, setPreviewHtmlContent] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assetInputRef = useRef<HTMLInputElement>(null);
+  const skuRef = useRef<HTMLDivElement>(null);
 
   // Rotate loading messages
   useEffect(() => {
@@ -159,6 +168,21 @@ const App: React.FC = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleAssetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setAssets(prev => [...prev, base64]);
+        setSelectedAsset(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset value to allow uploading same file again
+    if (assetInputRef.current) assetInputRef.current.value = '';
   };
 
   const getBase64Data = (dataUri: string) => {
@@ -328,45 +352,101 @@ const App: React.FC = () => {
       setIsGeneratingSku(false);
     }
   };
+  
+  const handleTranslateToThai = async () => {
+    if (!skuHtml || !skuRef.current) return;
+    setIsTranslating(true);
+    try {
+      // Use current DOM content (in case user made edits) or raw state
+      const currentContent = skuRef.current.innerHTML;
+      const translatedHtml = await translateHtmlToThai(currentContent);
+      setSkuHtml(translatedHtml);
+      addToHistory(AppMode.IMAGE_EDIT, `SKU 详情页 (泰文版)`, translatedHtml);
+    } catch (error) {
+      console.error(error);
+      alert("翻译失败，请重试。");
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert(`已复制: ${text}`);
   };
 
+  const handleSkuToImage = async (action: 'preview' | 'download') => {
+    // If preview, use the HTML modal instead of generating an image
+    if (action === 'preview') {
+        if (skuRef.current) {
+            setPreviewHtmlContent(skuRef.current.innerHTML); // Use current DOM content to catch any edits
+        } else {
+            setPreviewHtmlContent(skuHtml);
+        }
+        return;
+    }
+
+    if (!skuRef.current) return;
+    setIsGeneratingSkuImage(true);
+    try {
+        // slight delay to ensure fonts/images are ready
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        const dataUrl = await toPng(skuRef.current, { 
+            cacheBust: true, 
+            backgroundColor: '#ffffff',
+            quality: 0.95,
+            pixelRatio: 2, // High res
+            skipFonts: true, // Bypass Google Fonts CORS issues
+            fontEmbedCSS: '', // Disable font embedding to reduce CORS errors further
+            useCORS: true // IMPORTANT: Ensure external placeholders work
+        });
+        
+        const link = document.createElement('a');
+        link.download = `sku-detail-page-${Date.now()}.png`;
+        link.href = dataUrl;
+        link.click();
+    } catch (err: any) {
+        console.error('Failed to convert SKU HTML to image', err);
+        alert(`生成图片失败: ${err?.message || '未知错误，请检查网络或资源'}`);
+    } finally {
+        setIsGeneratingSkuImage(false);
+    }
+  };
+
   // Handle clicking on the rendered SKU HTML
   const handleSkuPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
      // Check if target is an image
      const target = e.target as HTMLElement;
+     
+     // Allow editing text naturally, only handle Image replacement on click
      if (target.tagName === 'IMG') {
         const img = target as HTMLImageElement;
         // If we have a selected asset, replace the source
         if (selectedAsset) {
-           if (skuHtml) {
-              // 1. Find the index of the clicked image in the container
-              // "currentTarget" refers to the div with the onClick handler (the container)
-              const container = e.currentTarget;
-              const allImages = Array.from(container.getElementsByTagName('img'));
-              const clickedIndex = allImages.indexOf(target as HTMLImageElement);
+           // 1. Update DOM immediately for feedback
+           img.src = selectedAsset;
 
-              if (clickedIndex !== -1) {
-                  // 2. Parse the current HTML string to a DOM to safely replace ONE instance
-                  const parser = new DOMParser();
-                  const doc = parser.parseFromString(skuHtml, 'text/html');
-                  const docImages = doc.getElementsByTagName('img');
-
-                  // 3. Update only the specific image at that index
-                  if (docImages[clickedIndex]) {
-                      docImages[clickedIndex].setAttribute('src', selectedAsset);
-                      // 4. Serialize back to string
-                      setSkuHtml(doc.body.innerHTML);
-                  }
-              }
+           // 2. Sync state with the current DOM content
+           // This is crucial: we grab the innerHTML from the ref, which includes 
+           // both the image update we just did AND any text edits the user made.
+           if (skuRef.current) {
+               setSkuHtml(skuRef.current.innerHTML);
            }
         } else {
            alert("请先在左侧素材库选择一张图片！");
         }
      }
+  };
+
+  // Handler for Live Agent to use prompt in Creative Studio
+  const handleUsePrompt = (promptText: string) => {
+    // 1. Set mode to Creative Studio
+    setActiveMode(AppMode.IMAGE_EDIT);
+    // 2. Set tab to Image Edit
+    setCreativeTab('image');
+    // 3. Set prompt text (removing the prefix if needed, handled by agent already usually)
+    setPrompt(promptText);
   };
 
   // --- Formatting Helper (Replaces Symbols with HTML) ---
@@ -471,7 +551,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* HTML Fullscreen Preview Modal */}
+      {/* HTML Fullscreen Preview Modal (Legacy - now replaced by Image Preview mostly, but kept if needed for other things) */}
       {previewHtmlContent && (
         <div 
           className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
@@ -523,10 +603,10 @@ const App: React.FC = () => {
 
         <nav className="space-y-2 mb-6">
           {renderSidebarItem(AppMode.ANALYSIS, <LayoutDashboard size={22} />, "市场分析")}
-          {renderSidebarItem(AppMode.VEO_VIDEO, <Video size={22} />, "Veo 视频工作室")}
-          {renderSidebarItem(AppMode.IMAGE_EDIT, <Wand2 size={22} />, "创意工作室")}
-          {renderSidebarItem(AppMode.CALCULATOR, <Calculator size={22} />, "物流定价计算")}
           {renderSidebarItem(AppMode.LIVE_AGENT, <MessageSquareText size={22} />, "AI 顾问咨询")}
+          {renderSidebarItem(AppMode.IMAGE_EDIT, <Wand2 size={22} />, "创意工作室")}
+          {renderSidebarItem(AppMode.VEO_VIDEO, <Video size={22} />, "Veo 视频工作室")}
+          {renderSidebarItem(AppMode.CALCULATOR, <Calculator size={22} />, "物流定价计算")}
         </nav>
 
         {/* User History Section */}
@@ -1064,12 +1144,19 @@ const App: React.FC = () => {
                               </div>
                            ))}
                            <div 
-                             onClick={() => fileInputRef.current?.click()}
+                             onClick={() => assetInputRef.current?.click()}
                              className="aspect-square rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"
                            >
                               <Plus size={24} />
                               <span className="text-xs mt-1">添加</span>
                            </div>
+                           <input 
+                              type="file" 
+                              ref={assetInputRef} 
+                              className="hidden" 
+                              accept="image/*"
+                              onChange={handleAssetUpload}
+                           />
                         </div>
                      </div>
 
@@ -1080,38 +1167,59 @@ const App: React.FC = () => {
                           SKU 详情页预览 ({skuStyle})
                         </h3>
                         
-                        {/* Mobile Simulator Frame */}
-                        <div className="relative border-8 border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl bg-white w-[375px] h-[700px]">
-                            {/* Status Bar Mock */}
-                            <div className="h-6 bg-black w-full absolute top-0 z-20 flex justify-between px-6 items-center">
-                              <div className="text-[10px] text-white font-medium">9:41</div>
-                              <div className="flex gap-1">
-                                  <div className="w-3 h-3 bg-white rounded-full opacity-20"></div>
-                                  <div className="w-3 h-3 bg-white rounded-full opacity-20"></div>
-                              </div>
+                        {/* Enlarged, clean card view without phone bezel */}
+                        <div className="relative bg-white w-full max-w-xl shadow-2xl rounded-xl overflow-hidden border border-slate-200 min-h-[800px]">
+                            
+                            {/* Toolbar Hint */}
+                            <div className="absolute top-4 right-4 z-20 flex gap-2">
+                               <div className="bg-indigo-600/90 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg backdrop-blur-sm pointer-events-none">
+                                  <PenLine size={12} /> 文字可直接编辑
+                               </div>
                             </div>
                             
                             {/* Dynamic HTML Content */}
+                            {/* Wrapper for scrolling and capturing */}
                             <div 
-                              className="h-full w-full overflow-y-auto pt-6 scrollbar-hide"
+                              className="h-full w-full overflow-y-auto scrollbar-hide"
                               onClick={handleSkuPreviewClick}
                             >
-                              <div dangerouslySetInnerHTML={{ __html: skuHtml }} />
+                               {/* Inner content div with ref for html-to-image capture */}
+                               <div 
+                                 ref={skuRef} 
+                                 className="bg-white min-h-full outline-none"
+                                 contentEditable={true}
+                                 suppressContentEditableWarning={true}
+                                 dangerouslySetInnerHTML={{ __html: skuHtml || '' }}
+                               />
                             </div>
-                            
-                            {/* Home Indicator */}
-                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-black rounded-full z-20 opacity-20"></div>
                         </div>
 
                         <div className="mt-8 flex gap-4">
                             <button 
-                              onClick={() => setPreviewHtmlContent(skuHtml)}
-                              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium shadow-md"
+                              onClick={handleTranslateToThai}
+                              disabled={isTranslating || isGeneratingSkuImage}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors font-medium shadow-md disabled:opacity-50"
                             >
-                              <ZoomIn size={18} /> 放大预览
+                              {isTranslating ? <Loader2 size={18} className="animate-spin" /> : <Languages size={18} />}
+                              翻译成泰文
                             </button>
                             <button 
-                              onClick={() => copyToClipboard(skuHtml)}
+                              onClick={() => handleSkuToImage('preview')}
+                              disabled={isGeneratingSkuImage}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium shadow-md disabled:opacity-50"
+                            >
+                              {isGeneratingSkuImage ? <Loader2 size={18} className="animate-spin" /> : <ZoomIn size={18} />}
+                              放大预览 (HTML)
+                            </button>
+                            <button 
+                              onClick={() => handleSkuToImage('download')}
+                              disabled={isGeneratingSkuImage}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium disabled:opacity-50"
+                            >
+                              <Download size={18} /> 下载长图
+                            </button>
+                            <button 
+                              onClick={() => copyToClipboard(skuHtml || '')}
                               className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
                             >
                               <Code size={18} /> 复制代码
@@ -1130,7 +1238,7 @@ const App: React.FC = () => {
 
           {/* === LIVE AGENT MODULE (Always Mounted, Hidden when inactive) === */}
           <div className={activeMode === AppMode.LIVE_AGENT ? "w-full mx-auto" : "hidden"}>
-            <LiveAgent contextData={analysisResult} />
+            <LiveAgent contextData={analysisResult} onUsePrompt={handleUsePrompt} />
           </div>
 
         </div>
