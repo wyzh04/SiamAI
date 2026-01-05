@@ -100,7 +100,7 @@ const App: React.FC = () => {
   const [isGeneratingSku, setIsGeneratingSku] = useState(false);
   const [skuHtml, setSkuHtml] = useState<string | null>(null);
   const [skuRenderKey, setSkuRenderKey] = useState(0);
-  const [skuStyle, setSkuStyle] = useState<string>('High Impact');
+  const [skuStyle, setSkuStyle] = useState<string>('Classic Conversion');
   const [skuLanguage, setSkuLanguage] = useState<'zh' | 'th' | 'ph'>('zh');
   const [isGeneratingSkuImage, setIsGeneratingSkuImage] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -387,7 +387,8 @@ const App: React.FC = () => {
             mimeType,
             analysisContext,
             heroStyle,
-            currentMarket
+            currentMarket,
+            prompt // Pass the user prompt for customization
         );
         setHeroHtml(html);
         setHeroLanguage('zh');
@@ -472,7 +473,8 @@ const App: React.FC = () => {
         mimeType,
         analysisContext,
         skuStyle,
-        currentMarket
+        currentMarket,
+        prompt // Pass the user prompt for customization
       );
       setSkuHtml(html);
       setSkuRenderKey(prev => prev + 1);
@@ -937,9 +939,9 @@ const App: React.FC = () => {
                        )}
 
                        {creativeTab === 'sku' && (
-                          <div className="flex gap-3">
-                             {["Minimalist", "High Impact", "Feature Comparison"].map((style) => (
-                               <button key={style} onClick={() => setSkuStyle(style)} className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${skuStyle === style ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{style} 风格</button>
+                          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                             {["Classic Conversion", "Muji Minimalist", "Cyberpunk Tech", "K-Pop / Y2K"].map((style) => (
+                               <button key={style} onClick={() => setSkuStyle(style)} className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors whitespace-nowrap ${skuStyle === style ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{style}</button>
                              ))}
                           </div>
                        )}
@@ -956,15 +958,17 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {(creativeTab === 'image' || activeMode !== AppMode.IMAGE_EDIT) && (
+                  {(creativeTab === 'image' || activeMode !== AppMode.IMAGE_EDIT || creativeTab === 'hero' || creativeTab === 'sku') && (
                     <div>
                       <label className="block text-base font-medium text-slate-700 mb-2">
-                        {activeMode === AppMode.IMAGE_EDIT ? "编辑指令 / 场景" : activeMode === AppMode.VEO_VIDEO ? "视频描述" : "额外说明 (可选)"}
+                        {activeMode === AppMode.IMAGE_EDIT 
+                          ? (creativeTab === 'hero' ? "首图设计要求 (可选)" : creativeTab === 'sku' ? "详情页设计要求 (可选)" : "编辑指令 / 场景")
+                          : activeMode === AppMode.VEO_VIDEO ? "视频描述" : "额外说明 (可选)"}
                       </label>
                       <textarea 
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder={activeMode === AppMode.IMAGE_EDIT ? "例如：去除背景并放在木桌上..." : activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." : `例如：这个在${MARKETS.find(m => m.code === currentMarket)?.name}流行吗？`}
+                        placeholder={activeMode === AppMode.IMAGE_EDIT ? (creativeTab === 'hero' ? "例如：背景要粉色樱花主题..." : creativeTab === 'sku' ? "例如：去除证书板块，增加更多细节图..." : "例如：去除背景并放在木桌上...") : activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." : `例如：这个在${MARKETS.find(m => m.code === currentMarket)?.name}流行吗？`}
                         className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-base min-h-[120px]"
                       />
                     </div>
