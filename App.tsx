@@ -59,6 +59,15 @@ const LOADING_MESSAGES = [
   "视频即将生成，请耐心等待..."
 ];
 
+const MARKETS: {code: TargetMarket, name: string, flag: string}[] = [
+    { code: 'TH', name: '泰国', flag: '🇹🇭' },
+    { code: 'VN', name: '越南', flag: '🇻🇳' },
+    { code: 'PH', name: '菲律宾', flag: '🇵🇭' },
+    { code: 'MY', name: '马来西亚', flag: '🇲🇾' },
+    { code: 'SG', name: '新加坡', flag: '🇸🇬' },
+    { code: 'ID', name: '印尼', flag: '🇮🇩' },
+];
+
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.ANALYSIS);
   const [currentMarket, setCurrentMarket] = useState<TargetMarket>('PH'); // Default Market
@@ -723,7 +732,7 @@ const App: React.FC = () => {
             <Globe className="text-white" size={24} />
           </div>
           <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600">
-            CrossBorder.ai
+            境智通
           </span>
         </div>
 
@@ -769,7 +778,7 @@ const App: React.FC = () => {
                           <p className="text-sm font-medium text-slate-700 truncate group-hover:text-indigo-700">{item.title}</p>
                           <div className="flex items-center gap-1.5 mt-0.5">
                               {item.market && (
-                                <span className={`text-[10px] px-1 rounded ${item.market === 'TH' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                <span className={`text-[10px] px-1 rounded bg-slate-100 text-slate-600`}>
                                     {item.market}
                                 </span>
                               )}
@@ -834,28 +843,23 @@ const App: React.FC = () => {
             {activeMode === AppMode.LIVE_AGENT && "AI 专家问答"}
           </h1>
           <div className="flex items-center gap-4">
-            {/* Market Switcher */}
-            <div className="bg-slate-100 p-1 rounded-lg flex items-center">
-               <button 
-                 onClick={() => setCurrentMarket('PH')}
-                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    currentMarket === 'PH' 
-                      ? 'bg-white text-indigo-700 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700'
-                 }`}
-               >
-                 🇵🇭 菲律宾 (PH)
-               </button>
-               <button 
-                 onClick={() => setCurrentMarket('TH')}
-                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    currentMarket === 'TH' 
-                      ? 'bg-white text-teal-700 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-700'
-                 }`}
-               >
-                 🇹🇭 泰国 (TH)
-               </button>
+            {/* Market Switcher - Expanded for 6 countries */}
+            <div className="bg-slate-100 p-1 rounded-lg flex items-center gap-1">
+               {MARKETS.map(market => (
+                   <button 
+                     key={market.code}
+                     onClick={() => setCurrentMarket(market.code)}
+                     className={`flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium transition-all min-w-[50px] ${
+                        currentMarket === market.code 
+                          ? 'bg-white text-indigo-700 shadow-sm font-bold' 
+                          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                     }`}
+                     title={market.name}
+                   >
+                     <span className="mr-1">{market.flag}</span>
+                     <span className="hidden xl:inline">{market.code}</span>
+                   </button>
+               ))}
             </div>
             
             {currentUser && (
@@ -925,15 +929,10 @@ const App: React.FC = () => {
 
                        {creativeTab === 'image' && (
                           <div className="flex gap-2 overflow-x-auto pb-2">
-                            {currentMarket === 'TH' ? (
-                                ["曼谷夜市背景", "泰式极简风", "泼水节场景", "热带雨林风"].map((preset, i) => (
-                                  <button key={i} onClick={() => setPrompt(preset)} className="text-sm px-4 py-2 bg-pink-50 text-pink-700 rounded-full border border-pink-100 hover:bg-pink-100 whitespace-nowrap">{preset}</button>
-                                ))
-                            ) : (
-                                ["马尼拉CBD夜景", "热带海岛沙滩", "极简白色摄影棚", "菲律宾街头风"].map((preset, i) => (
-                                  <button key={i} onClick={() => setPrompt(preset)} className="text-sm px-4 py-2 bg-pink-50 text-pink-700 rounded-full border border-pink-100 hover:bg-pink-100 whitespace-nowrap">{preset}</button>
-                                ))
-                            )}
+                             {/* Dynamic Presets based on Market */}
+                             {['Modern Studio', 'Lifestyle Nature', 'Urban Street', 'Minimalist'].map((preset, i) => (
+                                <button key={i} onClick={() => setPrompt(preset)} className="text-sm px-4 py-2 bg-pink-50 text-pink-700 rounded-full border border-pink-100 hover:bg-pink-100 whitespace-nowrap">{preset}</button>
+                             ))}
                           </div>
                        )}
 
@@ -965,7 +964,7 @@ const App: React.FC = () => {
                       <textarea 
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder={activeMode === AppMode.IMAGE_EDIT ? "例如：去除背景并放在木桌上..." : activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." : `例如：这个在${currentMarket === 'TH' ? '泰国' : '菲律宾'}流行吗？`}
+                        placeholder={activeMode === AppMode.IMAGE_EDIT ? "例如：去除背景并放在木桌上..." : activeMode === AppMode.VEO_VIDEO ? "例如：电影感慢动作旋转，专业灯光..." : `例如：这个在${MARKETS.find(m => m.code === currentMarket)?.name}流行吗？`}
                         className="w-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-base min-h-[120px]"
                       />
                     </div>
@@ -974,7 +973,7 @@ const App: React.FC = () => {
                   {activeMode === AppMode.IMAGE_EDIT && creativeTab === 'sku' && (
                      <div className="bg-indigo-50 p-4 rounded-xl text-indigo-700 text-sm leading-relaxed">
                         <p className="font-bold flex items-center gap-2 mb-1"><Sparkles size={14}/> 智能 UI 引擎</p>
-                        Gemini 将根据{currentMarket === 'TH' ? '泰国' : '菲律宾'}市场数据自动生成详情页。
+                        Gemini 将根据{MARKETS.find(m => m.code === currentMarket)?.name}市场数据自动生成详情页。
                      </div>
                   )}
 
@@ -1075,7 +1074,7 @@ const App: React.FC = () => {
                     需要 SKU 建议?
                   </h3>
                   <p className="text-base text-indigo-700 mb-5 leading-relaxed">
-                    基于{currentMarket === 'TH' ? '泰国' : '菲律宾'}市场数据，AI 顾问可以为您规划 SKU 组合。
+                    基于{MARKETS.find(m => m.code === currentMarket)?.name}市场数据，AI 顾问可以为您规划 SKU 组合。
                   </p>
                   <button onClick={() => setActiveMode(AppMode.LIVE_AGENT)} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-lg hover:bg-indigo-700 transition-all font-medium text-base shadow-md shadow-indigo-200">
                     咨询 AI 顾问 <ChevronRight size={16} />
@@ -1097,7 +1096,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 relative">
-                   <h3 className="text-lg font-bold text-slate-800 mb-5">市场价格分布 ({currentMarket === 'TH' ? 'THB' : 'PHP'})</h3>
+                   <h3 className="text-lg font-bold text-slate-800 mb-5">市场价格分布 ({MARKETS.find(m => m.code === currentMarket)?.code})</h3>
                    <div className="h-64">
                      {analysisResult.priceData && analysisResult.priceData.length > 0 ? (
                        <ResponsiveContainer width="100%" height="100%">
@@ -1262,7 +1261,7 @@ const App: React.FC = () => {
                         <div className="mt-8 flex gap-4">
                             <button onClick={handleToggleTranslation} disabled={isTranslating || isGeneratingSkuImage} className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors font-medium shadow-md disabled:opacity-50">
                               {isTranslating ? <Loader2 size={18} className="animate-spin" /> : <Languages size={18} />}
-                              {skuLanguage === 'zh' ? `翻译成${currentMarket === 'TH' ? '泰文' : '英文'}` : '还原回中文'}
+                              {skuLanguage === 'zh' ? `翻译成${MARKETS.find(m => m.code === currentMarket)?.name || '英文'}` : '还原回中文'}
                             </button>
                             <button onClick={() => handleSkuToImage('preview')} disabled={isGeneratingSkuImage} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium shadow-md disabled:opacity-50">
                               {isGeneratingSkuImage ? <Loader2 size={18} className="animate-spin" /> : <ZoomIn size={18} />}

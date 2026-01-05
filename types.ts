@@ -7,7 +7,7 @@ export enum AppMode {
   CALCULATOR = 'CALCULATOR'
 }
 
-export type TargetMarket = 'TH' | 'PH';
+export type TargetMarket = 'TH' | 'PH' | 'VN' | 'MY' | 'SG' | 'ID';
 
 export interface AnalysisData {
   text: string;

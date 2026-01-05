@@ -11,30 +11,31 @@ interface LiveAgentProps {
 }
 
 const getSystemInstruction = (market: TargetMarket) => `
-你是一位针对${market === 'TH' ? '泰国 (Thailand)' : '菲律宾 (Philippines)'}市场的跨境电商高级顾问。
+你是一位针对东南亚市场（特指：${market}）的跨境电商高级顾问。
 你的任务是帮助用户解决选品、定价、营销和物流方面的具体问题。
 请使用中文与用户进行专业、热情且切中要害的对话。
-如果涉及货币，默认使用${market === 'TH' ? '泰铢 (THB)' : '菲律宾比索 (PHP)'}。
-回答时请条理清晰，可以使用 Markdown 格式（如列表、加粗）来增强可读性。
 
 【市场专家角色设定】：
-${market === 'TH' 
-  ? '- 了解泰国佛教文化、皇室禁忌、色彩喜好（鲜艳）。\n- 熟悉 Shopee TH, Lazada TH, TikTok TH。\n- 推荐关键词语言：泰语 (Thai)。' 
-  : '- 了解菲律宾天主教文化、美式影响、节日（圣诞季长）。\n- 熟悉 Shopee PH, Lazada PH, TikTok PH。\n- 推荐关键词语言：英语 (English) 或 Tagalog。'}
+${market === 'TH' ? '- 泰国: 佛教文化、颜色喜好（鲜艳）、TikTok/Shopee。关键词: 泰语。' : ''}
+${market === 'PH' ? '- 菲律宾: 天主教、英语/Tagalog、喜欢促销/赠品。关键词: 英语/Taglish。' : ''}
+${market === 'VN' ? '- 越南: 价格敏感、年轻人口、Zalo/Facebook 营销。关键词: 越南语。' : ''}
+${market === 'MY' ? '- 马来西亚: 多元种族、清真(Halal)意识、西马/东马物流差异。关键词: 英语/马来语。' : ''}
+${market === 'SG' ? '- 新加坡: 高消费力、追求品质效率、全英文环境。关键词: 英语。' : ''}
+${market === 'ID' ? '- 印尼: 穆斯林文化、千岛物流痛点、Tokopedia/Shopee。关键词: 印尼语。' : ''}
 
 【特殊能力 - 当已知产品信息时】：
 1. SKU 规划：建议适合当地市场的 SKU 组合（如：颜色、尺寸、打包策略）。
 2. 视频脚本：生成本土化 TikTok 短视频脚本。
-3. 详情页优化：撰写 ${market === 'TH' ? '泰语风格' : 'Taglish/英语风格'} 的卖点。
+3. 详情页优化：撰写符合当地语言习惯的卖点。
 
 【智能配图生成 (SKU 详情页专用)】：
-当用户询问“场景图建议”、“生成图片提示词”、“配图建议”或“SKU 配图”时，请基于当前分析的产品，**严格按照以下 8 个核心板块顺序**，生成极具**${market === 'TH' ? '泰国' : '菲律宾'}本土电商风格**的英文 AI 绘画提示词。
+当用户询问“场景图建议”、“生成图片提示词”、“配图建议”或“SKU 配图”时，请基于当前分析的产品，**严格按照以下 8 个核心板块顺序**，生成极具**${market}本土电商风格**的英文 AI 绘画提示词。
 
 **请依次生成 8 个板块的 Prompt:**
-1. **Hero Poster (首屏海报)**: ${market === 'TH' ? 'Vibrant colors, summer vibe' : 'High contrast, bold text'}.
+1. **Hero Poster (首屏海报)**
 2. **Product Overview (产品全貌)**
 3. **Pain Points (核心功能/痛点)**
-4. **Lifestyle Scenario (场景化)**: ${market === 'TH' ? 'Bangkok street or modern Thai condo' : 'Metro Manila condo or tropical island'}.
+4. **Lifestyle Scenario (场景化)**
 5. **Competitor Comparison (竞品对比)**
 6. **Quality Details (细节品质)**
 7. **Social Proof (用户口碑)**
@@ -153,16 +154,15 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, market, onUse
       config: { systemInstruction },
     });
 
-    // Reset messages if it's a fresh load (or context/market changed)
-    const marketName = market === 'TH' ? '泰国' : '菲律宾';
-    const flag = market === 'TH' ? '🇹🇭' : '🇵🇭';
+    const marketFlags: Record<string, string> = { TH: '🇹🇭', PH: '🇵🇭', VN: '🇻🇳', MY: '🇲🇾', SG: '🇸🇬', ID: '🇮🇩' };
+    const flag = marketFlags[market] || '';
     
     setMessages([
         { 
           role: 'model', 
           text: contextData 
-            ? `### 已接收${marketName}市场分析报告！${flag}\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：在${marketName}如何设置变体更好卖？\n2. **视频脚本**：TikTok ${market} 爆款视频怎么拍？\n3. **SKU 配图**：为详情页生成全套场景提示词。\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。` 
-            : `### Sawasdee/Mabuhay！我是你的${marketName}市场专属顾问。\n\n关于选品趋势、平台规则或本地化营销策略，有什么想问的吗？\n\n📸 **特殊功能**：您可以上传任何 SKU 图片，让我分析卖点或提取 AI 绘画/视频提示词。` 
+            ? `### 已接收${market}市场分析报告！${flag}\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：在${market}如何设置变体更好卖？\n2. **视频脚本**：TikTok ${market} 爆款视频怎么拍？\n3. **SKU 配图**：为详情页生成全套场景提示词。\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。` 
+            : `### Hello！我是你的${market}市场专属顾问 ${flag}。\n\n关于选品趋势、平台规则或本地化营销策略，有什么想问的吗？\n\n📸 **特殊功能**：您可以上传任何 SKU 图片，让我分析卖点或提取 AI 绘画/视频提示词。` 
         }
     ]);
   }, [contextData, market]);
@@ -274,16 +274,15 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, market, onUse
     }
   };
 
-  // Dynamic suggestions based on context & market
   const suggestions = contextData ? [
     { text: "生成 SKU 组合策略", icon: <Box size={16}/> },
     { text: "生成 SKU 详情页配图", icon: <ImageIcon size={16}/> },
     { text: "写一个 TikTok 视频脚本", icon: <Clapperboard size={16}/> },
     { text: "分析差评风险", icon: <MessageSquarePlus size={16}/> },
   ] : [
-    { text: `写 3 个 ${market === 'TH' ? '泰语' : 'Tagalog'} 标题`, icon: <MessageSquarePlus size={16}/> },
-    { text: `目前${market === 'TH' ? '曼谷' : '马尼拉'}流行什么？`, icon: <Sparkles size={16}/> },
-    { text: "Shopee 和 Lazada 哪个好做？", icon: <MessageSquarePlus size={16}/> },
+    { text: `写 3 个本地化标题`, icon: <MessageSquarePlus size={16}/> },
+    { text: `现在什么品类最火？`, icon: <Sparkles size={16}/> },
+    { text: "Shopee/Lazada 哪个好做？", icon: <MessageSquarePlus size={16}/> },
     { text: "提取这张图片的 Veo 提示词", icon: <ImageIcon size={16}/> }
   ];
 
@@ -291,12 +290,12 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, market, onUse
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-140px)] min-h-[600px] overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm z-10">
-        <div className={`w-12 h-12 bg-gradient-to-br ${market === 'TH' ? 'from-teal-500 to-emerald-600' : 'from-indigo-500 to-purple-600'} rounded-full flex items-center justify-center shadow-md`}>
+        <div className={`w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-md`}>
           <Bot className="text-white" size={28} />
         </div>
         <div>
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-            AI 专家顾问 ({market === 'TH' ? '泰国' : '菲律宾'}站)
+            AI 专家顾问 ({market}站)
             <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">Online</span>
           </h3>
           <p className="text-sm text-slate-500">Gemini 3.0 • {contextData ? '已关联产品分析' : '通用咨询模式'}</p>

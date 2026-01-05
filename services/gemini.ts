@@ -2,7 +2,7 @@ import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { AnalysisData, TargetMarket } from "../types";
 
 /**
- * Analyze product image for Specific Market (TH or PH) using Search Grounding
+ * Analyze product image for Specific Market (TH, PH, VN, MY, SG, ID) using Search Grounding
  */
 export const analyzeProduct = async (
   base64Image: string,
@@ -13,16 +13,49 @@ export const analyzeProduct = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   // Dynamic Configuration based on Market
-  const context = market === 'TH' 
-    ? {
+  const getMarketContext = (m: TargetMarket) => {
+    switch (m) {
+      case 'TH': return {
         role: "针对泰国市场 (Thailand) 的跨境电商专家",
         currency: "泰铢 (THB)",
         platforms: "Shopee TH, Lazada TH, TikTok Shop Thailand",
         culture: "佛教文化、皇室尊敬、颜色喜好（鲜艳）、气候（热带季风）",
         keywordsLang: "泰语 (Thai)",
         priceJsonExample: `{ "prices": [{ "name": "Shopee TH", "price": 450 }], "keywords": ["รองเท้า", "แฟชั่น"] }`
-      }
-    : {
+      };
+      case 'VN': return {
+        role: "针对越南市场 (Vietnam) 的跨境电商专家",
+        currency: "越南盾 (VND)",
+        platforms: "Shopee VN, Lazada VN, Tiki, TikTok Shop Vietnam",
+        culture: "价格敏感、年轻化人口、Zalo社交电商、摩托车文化",
+        keywordsLang: "越南语 (Vietnamese)",
+        priceJsonExample: `{ "prices": [{ "name": "Shopee VN", "price": 150000 }], "keywords": ["giày dép", "thời trang"] }`
+      };
+      case 'MY': return {
+        role: "针对马来西亚市场 (Malaysia) 的跨境电商专家",
+        currency: "马来西亚林吉特 (MYR)",
+        platforms: "Shopee MY, Lazada MY, TikTok Shop Malaysia",
+        culture: "多元种族（马来/华/印）、伊斯兰教（Halal认证）、斋月营销",
+        keywordsLang: "英语 (English) 或马来语 (Malay)",
+        priceJsonExample: `{ "prices": [{ "name": "Shopee MY", "price": 45.50 }], "keywords": ["Baju", "Fashion"] }`
+      };
+      case 'SG': return {
+        role: "针对新加坡市场 (Singapore) 的跨境电商专家",
+        currency: "新加坡元 (SGD)",
+        platforms: "Shopee SG, Lazada SG, Amazon SG, Qoo10",
+        culture: "高消费力、追求品质与效率、英语为主、西化程度高",
+        keywordsLang: "英语 (English)",
+        priceJsonExample: `{ "prices": [{ "name": "Shopee SG", "price": 25.90 }], "keywords": ["Dress", "Office Wear"] }`
+      };
+      case 'ID': return {
+        role: "针对印尼市场 (Indonesia) 的跨境电商专家",
+        currency: "印尼卢比 (IDR)",
+        platforms: "Shopee ID, Tokopedia, Lazada ID, TikTok Shop",
+        culture: "穆斯林文化（最大）、千岛之国（物流复杂）、移动端优先",
+        keywordsLang: "印尼语 (Bahasa Indonesia)",
+        priceJsonExample: `{ "prices": [{ "name": "Shopee ID", "price": 85000 }], "keywords": ["Sepatu", "Wanita"] }`
+      };
+      case 'PH': default: return {
         role: "针对菲律宾市场 (Philippines) 的跨境电商专家",
         currency: "菲律宾比索 (PHP)",
         platforms: "Shopee PH, Lazada PH, TikTok Shop Philippines",
@@ -30,6 +63,10 @@ export const analyzeProduct = async (
         keywordsLang: "英语 (English) 或他加禄语 (Tagalog)",
         priceJsonExample: `{ "prices": [{ "name": "Shopee PH", "price": 450 }], "keywords": ["Rubber Shoes", "Murang Sapatos"] }`
       };
+    }
+  };
+
+  const context = getMarketContext(market);
 
   try {
     const prompt = `
@@ -38,15 +75,15 @@ export const analyzeProduct = async (
       
       请提供一份综合性的中文报告，包含以下内容：
       1. 产品识别 (Product Identification)。
-      2. ${market === 'TH' ? '泰国' : '菲律宾'}市场适应性 (Market Suitability) - 是否符合当地${context.culture}及消费习惯？
-      3. 竞品分析 (Competitor Analysis) - 参考 ${context.platforms} 的趋势。
+      2. 市场适应性 (Market Suitability) - 是否符合当地（${context.platforms} 覆盖地区）${context.culture}及消费习惯？
+      3. 竞品分析 (Competitor Analysis) - 参考本土趋势。
       4. 定价策略 (Pricing Strategy) - 预估${context.currency}价格区间。
       5. 营销角度 (Marketing Angles) - 本土化文案切入点。
       
       用户备注: ${additionalPrompt}
       
       【重要数据提取 1：价格】
-      请根据分析，提供 Shopee, Lazada, TikTok Shop 三个平台的【预估平均售价】（单位：${market === 'TH' ? 'THB' : 'PHP'}）。
+      请根据分析，提供 3 个主流平台的【预估平均售价】（单位：${context.currency}）。
       
       【重要数据提取 2：SEO 关键词】
       请提取 5-8 个高流量的本土 SEO 搜索关键词（${context.keywordsLang}），用于电商标题优化。
@@ -290,9 +327,13 @@ export const generateHeroHtml = async (
   
   const styleInstructions = getHeroStyleInstructions(style);
   
-  const marketContext = market === 'TH' 
-    ? "Thailand Market (Shopee TH/Lazada TH). Main Copy should be eye-catching." 
-    : "Philippines Market (Shopee PH/Lazada PH). Main Copy should be in English (Taglish style allowed).";
+  let marketContext = "Southeast Asia Market";
+  if (market === 'TH') marketContext = "Thailand (Shopee TH). Vibrant, colorful.";
+  if (market === 'VN') marketContext = "Vietnam (Shopee VN). Price focus, clear info.";
+  if (market === 'PH') marketContext = "Philippines (Shopee PH). English/Taglish.";
+  if (market === 'MY') marketContext = "Malaysia. Multicultural, Halal-friendly if food.";
+  if (market === 'SG') marketContext = "Singapore. Premium, Clean, English.";
+  if (market === 'ID') marketContext = "Indonesia. Bahasa Indonesia, Mobile-first.";
 
   const prompt = `
     You are an award-winning UI/Visual Designer for E-commerce.
@@ -396,7 +437,12 @@ export const generateSkuUiLayout = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const styleInstructions = getSkuStyleInstructions(style);
-  const marketContext = market === 'TH' ? "Thailand" : "Philippines";
+  
+  const marketNames: Record<string, string> = {
+    'TH': 'Thailand', 'PH': 'Philippines', 'VN': 'Vietnam', 
+    'MY': 'Malaysia', 'SG': 'Singapore', 'ID': 'Indonesia'
+  };
+  const marketContext = marketNames[market] || "Southeast Asia";
 
   const prompt = `
     You are a Senior UI/UX Designer for Global Brands.
@@ -507,15 +553,17 @@ export const translateSkuHtml = async (
   let sourceLang = "Simplified Chinese";
   let targetLang = "Simplified Chinese";
   
+  // Basic mapping for target language if not ZH
   if (targetLanguage === 'zh') {
      targetLang = "Simplified Chinese";
-     sourceLang = market === 'TH' ? "Thai" : "English";
-  } else if (targetLanguage === 'th') {
+     sourceLang = "Local Language (Thai/English/Vietnamese/etc)";
+  } else {
      sourceLang = "Simplified Chinese";
-     targetLang = "Thai (Native E-commerce style)";
-  } else if (targetLanguage === 'ph') {
-     sourceLang = "Simplified Chinese";
-     targetLang = "English (Philippines Market, use terms like 'COD', 'Murang')";
+     if (market === 'TH') targetLang = "Thai";
+     else if (market === 'VN') targetLang = "Vietnamese";
+     else if (market === 'ID') targetLang = "Bahasa Indonesia";
+     else if (market === 'MY') targetLang = "English/Malay Mix";
+     else targetLang = "English (E-commerce context)";
   }
 
   const prompt = `
@@ -526,7 +574,7 @@ export const translateSkuHtml = async (
     1. Keep all HTML tags, structure, classes, and styles EXACTLY the same.
     2. Only translate human-readable text (headings, paragraphs, button labels).
     3. Do NOT translate technical attribute values.
-    4. Ensure the translation is natural and uses local e-commerce terminology for ${market === 'TH' ? 'Thailand' : 'Philippines'}.
+    4. Ensure the translation is natural and uses local e-commerce terminology for ${market}.
     5. Return ONLY the translated HTML string. No markdown blocks.
 
     Input HTML:
