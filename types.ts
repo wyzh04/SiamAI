@@ -1,10 +1,13 @@
 export enum AppMode {
   ANALYSIS = 'ANALYSIS',
-  VEO_VIDEO = 'VEO_VIDEO',
-  IMAGE_EDIT = 'IMAGE_EDIT',
   LIVE_AGENT = 'LIVE_AGENT',
+  HERO_DESIGN = 'HERO_DESIGN',
+  IMAGE_EDIT = 'IMAGE_EDIT',
+  VEO_VIDEO = 'VEO_VIDEO',
   CALCULATOR = 'CALCULATOR'
 }
+
+export type TargetMarket = 'TH' | 'PH';
 
 export interface AnalysisData {
   text: string;
@@ -12,7 +15,7 @@ export interface AnalysisData {
     web?: { uri: string; title: string };
   }>;
   priceData?: Array<{ name: string; price: number }>;
-  keywords?: string[]; // New: Extracted Thai keywords
+  keywords?: string[]; 
 }
 
 export interface VideoGenerationState {
@@ -40,6 +43,7 @@ export interface HistoryItem {
   title: string;
   thumbnail?: string; // Base64 string for preview
   data: any; // Store analysis result or video URL
+  market?: TargetMarket; // Track which market this history item belongs to
 }
 
 // Helper types for AI Studio

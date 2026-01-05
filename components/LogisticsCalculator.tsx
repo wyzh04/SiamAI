@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, Truck, Plane, Ship, Package, DollarSign, RefreshCw, Info, MapPin } from 'lucide-react';
+import { Calculator, Truck, Plane, Ship, Package, DollarSign, MapPin, TrendingUp } from 'lucide-react';
+import { AnalysisData, TargetMarket } from '../types';
 
-const EXCHANGE_RATE_CNY_THB = 5.0; // 1 CNY = 5 THB (Approx)
+const EXCHANGE_RATE_CNY_THB = 5.0; // 1 CNY = 5 THB
+const EXCHANGE_RATE_CNY_PHP = 8.0; // 1 CNY = 8 PHP
 
 interface LogisticsOption {
   id: string;
@@ -17,31 +19,15 @@ const LOGISTICS_OPTIONS: LogisticsOption[] = [
   { id: 'sea', name: '大件海运', type: 'sea', icon: <Ship size={20} /> },
 ];
 
-// Helper to generate the price table based on the image formula
-// Zone A: 23 + w/10
-// Zone B: 36 + w/10
-// Zone C: 79 + w/10
-const generatePriceTable = () => {
-  const rows = [];
-  // Generate from 10g to 2000g (Extended based on user input showing > 1050g)
-  for (let g = 10; g <= 2000; g += 10) {
-    const steps = g / 10;
-    rows.push({
-      weight: g,
-      zoneA: 23 + steps,
-      zoneB: 36 + steps,
-      zoneC: 79 + steps,
-    });
-  }
-  return rows;
-};
+interface LogisticsCalculatorProps {
+  contextData?: AnalysisData | null;
+  market: TargetMarket;
+}
 
-const STANDARD_PRICE_TABLE = generatePriceTable();
-
-export const LogisticsCalculator: React.FC = () => {
+export const LogisticsCalculator: React.FC<LogisticsCalculatorProps> = ({ contextData, market }) => {
   // Inputs
   const [costCNY, setCostCNY] = useState<number>(20);
-  const [weightKg, setWeightKg] = useState<number>(0.1); // Default to small packet
+  const [weightKg, setWeightKg] = useState<number>(0.1); 
   const [length, setLength] = useState<number>(10);
   const [width, setWidth] = useState<number>(10);
   const [height, setHeight] = useState<number>(5);
@@ -55,55 +41,104 @@ export const LogisticsCalculator: React.FC = () => {
   const [results, setResults] = useState({
     volumetricWeight: 0,
     chargeableWeight: 0,
-    shippingCostTHB: 0, // Store THB for reference
+    shippingCostLocal: 0, 
     shippingCostCNY: 0,
     totalCostCNY: 0,
-    suggestedPriceTHB: 0,
+    suggestedPriceLocal: 0,
     netProfitCNY: 0
   });
 
+  const exchangeRate = market === 'TH' ? EXCHANGE_RATE_CNY_THB : EXCHANGE_RATE_CNY_PHP;
+  const currencySymbol = market === 'TH' ? '฿' : '₱';
+
+  // Generate Price Table based on market
+  const priceTable = useMemo(() => {
+    const rows = [];
+    if (market === 'TH') {
+      // TH Logic: 10g steps
+      for (let g = 10; g <= 2000; g += 10) {
+        const steps = g / 10;
+        rows.push({
+          weight: g,
+          zoneA: 23 + steps,
+          zoneB: 36 + steps,
+          zoneC: 79 + steps,
+        });
+      }
+    } else {
+      // PH Logic: 100g steps (simulated for simplicity)
+      for (let g = 100; g <= 2000; g += 100) {
+        const weightFactor = g / 100;
+        rows.push({
+          weight: g,
+          zoneA: Math.round(45 + (weightFactor * 5)), // NCR
+          zoneB: Math.round(65 + (weightFactor * 8)), // Luzon
+          zoneC: Math.round(85 + (weightFactor * 10)), // VisMin
+        });
+      }
+    }
+    return rows;
+  }, [market]);
+
+  // Calculate market average if data exists
+  const marketStats = useMemo(() => {
+    if (!contextData?.priceData || contextData.priceData.length === 0) return null;
+    const prices = contextData.priceData.map(d => d.price);
+    const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+    return { avg, items: contextData.priceData };
+  }, [contextData]);
+
   useEffect(() => {
     calculate();
-  }, [costCNY, weightKg, length, width, height, targetMargin, platformFeePercent, selectedLogisticId, zone]);
+  }, [costCNY, weightKg, length, width, height, targetMargin, platformFeePercent, selectedLogisticId, zone, market]);
 
   const calculate = () => {
     // 1. Weight Calculation
     const volWeight = (length * width * height) / 6000;
-    // Standard channel often uses actual weight unless vol is huge, but let's stick to standard logistic rules
     const chargeWeightKg = Math.max(weightKg, volWeight);
-    const chargeWeightG = Math.ceil(chargeWeightKg * 1000 / 10) * 10; // Round up to nearest 10g steps
-
-    let shippingTHB = 0;
+    
+    let shippingLocal = 0;
     let shippingCNY = 0;
 
     if (selectedLogisticId === 'standard') {
-       // Formula derived from image
-       const steps = chargeWeightG / 10;
-       let base = 0;
-       if (zone === 'A') base = 23;
-       if (zone === 'B') base = 36;
-       if (zone === 'C') base = 79;
-       
-       shippingTHB = base + steps;
-       shippingCNY = shippingTHB / EXCHANGE_RATE_CNY_THB;
+       if (market === 'TH') {
+           const chargeWeightG = Math.ceil(chargeWeightKg * 1000 / 10) * 10;
+           const steps = chargeWeightG / 10;
+           let base = 23;
+           if (zone === 'B') base = 36;
+           if (zone === 'C') base = 79;
+           shippingLocal = base + steps;
+       } else {
+           // PH Standard
+           const chargeWeightG = Math.ceil(chargeWeightKg * 1000 / 100) * 100;
+           const weightFactor = chargeWeightG / 100;
+           let base = 45; let rate = 5;
+           if (zone === 'B') { base = 65; rate = 8; }
+           if (zone === 'C') { base = 85; rate = 10; }
+           shippingLocal = base + (weightFactor * rate);
+       }
+       shippingCNY = shippingLocal / exchangeRate;
     } else {
-       // Bulk Rates (Legacy)
+       // Bulk Rates
        let pricePerKg = 0;
        let minWeight = 0;
        
-       if (selectedLogisticId === 'land') { pricePerKg = 6; minWeight = 0.1; } // CNY
-       if (selectedLogisticId === 'air') { pricePerKg = 25; minWeight = 0.5; }
-       if (selectedLogisticId === 'sea') { pricePerKg = 3; minWeight = 10; }
+       if (market === 'TH') {
+           if (selectedLogisticId === 'land') { pricePerKg = 6; minWeight = 0.1; }
+           if (selectedLogisticId === 'air') { pricePerKg = 25; minWeight = 0.5; }
+           if (selectedLogisticId === 'sea') { pricePerKg = 3; minWeight = 10; }
+       } else {
+           if (selectedLogisticId === 'land') { pricePerKg = 8; minWeight = 0.1; }
+           if (selectedLogisticId === 'air') { pricePerKg = 35; minWeight = 0.5; }
+           if (selectedLogisticId === 'sea') { pricePerKg = 5; minWeight = 10; }
+       }
 
        let finalWeight = chargeWeightKg < minWeight ? minWeight : chargeWeightKg;
        shippingCNY = finalWeight * pricePerKg;
-       shippingTHB = shippingCNY * EXCHANGE_RATE_CNY_THB;
+       shippingLocal = shippingCNY * exchangeRate;
     }
 
-    // 3. Total Cost (Product + Shipping)
     const totalBaseCostCNY = costCNY + shippingCNY;
-
-    // 4. Pricing Logic
     const marginDecimal = targetMargin / 100;
     const feeDecimal = platformFeePercent / 100;
     
@@ -116,33 +151,80 @@ export const LogisticsCalculator: React.FC = () => {
         sellingPriceCNY = totalBaseCostCNY * 2;
     }
 
-    const sellingPriceTHB = sellingPriceCNY * EXCHANGE_RATE_CNY_THB;
+    const sellingPriceLocal = sellingPriceCNY * exchangeRate;
     const profitCNY = sellingPriceCNY * marginDecimal;
 
     setResults({
       volumetricWeight: parseFloat(volWeight.toFixed(3)),
       chargeableWeight: parseFloat(chargeWeightKg.toFixed(3)),
-      shippingCostTHB: parseFloat(shippingTHB.toFixed(0)),
+      shippingCostLocal: parseFloat(shippingLocal.toFixed(0)),
       shippingCostCNY: parseFloat(shippingCNY.toFixed(2)),
       totalCostCNY: parseFloat(totalBaseCostCNY.toFixed(2)),
-      suggestedPriceTHB: Math.ceil(sellingPriceTHB),
+      suggestedPriceLocal: Math.ceil(sellingPriceLocal),
       netProfitCNY: parseFloat(profitCNY.toFixed(2))
     });
   };
 
+  const calculateMarginAtPrice = (targetPriceLocal: number) => {
+    const targetPriceCNY = targetPriceLocal / exchangeRate;
+    const feeCNY = targetPriceCNY * (platformFeePercent / 100);
+    const profitCNY = targetPriceCNY - results.totalCostCNY - feeCNY;
+    const marginPercent = (profitCNY / targetPriceCNY) * 100;
+    return { profitCNY, marginPercent };
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in h-[calc(100vh-140px)] min-h-[600px]">
-      {/* --- Left Column: Calculator Inputs & Result --- */}
-      <div className="lg:col-span-7 flex flex-col gap-6 h-full overflow-y-auto pr-2">
+      {/* --- Left Column --- */}
+      <div className="lg:col-span-7 flex flex-col gap-6 h-full overflow-y-auto pr-2 scrollbar-hide">
         
+        {/* Market Stats */}
+        {marketStats && (
+          <div className={`rounded-2xl shadow-md text-white p-6 relative overflow-hidden ${market === 'TH' ? 'bg-gradient-to-r from-teal-600 to-emerald-600' : 'bg-gradient-to-r from-indigo-600 to-purple-700'}`}>
+             <div className="absolute top-0 right-0 p-4 opacity-10">
+                <TrendingUp size={100} />
+             </div>
+             
+             <div className="relative z-10">
+                <h3 className="flex items-center gap-2 font-bold text-lg mb-4">
+                  <TrendingUp size={20} /> {market === 'TH' ? '泰国' : '菲律宾'}市场价格情报
+                </h3>
+                
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                   {marketStats.items.map((item, idx) => {
+                     const { profitCNY, marginPercent } = calculateMarginAtPrice(item.price);
+                     const isProfitable = profitCNY > 0;
+
+                     return (
+                       <div key={idx} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10 hover:bg-white/20 transition-colors cursor-pointer group">
+                          <div className="text-xs text-white/80 mb-1">{item.name}</div>
+                          <div className="text-xl font-bold mb-2">{currencySymbol} {item.price}</div>
+                          
+                          <div className={`text-xs px-2 py-1 rounded flex items-center justify-between ${isProfitable ? 'bg-green-500/20 text-green-100' : 'bg-red-500/20 text-red-100'}`}>
+                             <span>利润: ¥{profitCNY.toFixed(1)}</span>
+                             <span className="font-bold">{marginPercent.toFixed(0)}%</span>
+                          </div>
+                       </div>
+                     );
+                   })}
+                </div>
+                
+                <div className="flex justify-between items-center text-xs text-white/80 bg-black/20 p-2 rounded-lg">
+                   <span>市场均价: {currencySymbol} {marketStats.avg.toFixed(0)}</span>
+                   <span>建议: {results.suggestedPriceLocal < marketStats.avg ? "✅ 有价格优势" : "⚠️ 高于市场均价"}</span>
+                </div>
+             </div>
+          </div>
+        )}
+
         {/* Calculator Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-shrink-0">
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
               <Calculator className="text-indigo-600" size={20}/>
-              跨境定价计算器
+              {market === 'TH' ? '泰国' : '菲律宾'}定价计算器
             </h3>
-            <span className="text-xs text-slate-400">汇率 1:{EXCHANGE_RATE_CNY_THB.toFixed(1)}</span>
+            <span className="text-xs text-slate-400">汇率 1:{exchangeRate.toFixed(1)}</span>
           </div>
 
           <div className="p-6 space-y-6">
@@ -215,7 +297,10 @@ export const LogisticsCalculator: React.FC = () => {
                            ))}
                         </div>
                         <div className="text-[10px] text-orange-600/70 mt-1.5">
-                           {zone === 'A' ? '曼谷及周边地区 (Zone A)' : zone === 'B' ? '外府地区 (Zone B)' : '偏远/岛屿地区 (Zone C)'}
+                           {market === 'TH' 
+                              ? (zone === 'A' ? '曼谷及周边地区' : zone === 'B' ? '外府地区' : '偏远/岛屿地区')
+                              : (zone === 'A' ? 'NCR (Metro Manila)' : zone === 'B' ? 'Luzon (Provincial)' : 'Visayas & Mindanao')
+                           }
                         </div>
                      </div>
                    )}
@@ -244,16 +329,30 @@ export const LogisticsCalculator: React.FC = () => {
            
            <div className="space-y-6 relative z-10">
              <div>
-               <span className="text-slate-400 text-sm font-medium uppercase tracking-wider">建议定价 (THB)</span>
-               <div className="text-5xl font-bold text-green-400 flex items-baseline gap-2 mt-1">
-                 ฿ {results.suggestedPriceTHB}
+               <span className="text-slate-400 text-sm font-medium uppercase tracking-wider">建议定价 ({currencySymbol})</span>
+               <div className="flex items-center gap-4 mt-1">
+                 <div className="text-5xl font-bold text-green-400">
+                   {currencySymbol} {results.suggestedPriceLocal}
+                 </div>
+                 {marketStats && (
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                       results.suggestedPriceLocal < marketStats.avg 
+                       ? 'bg-green-500/20 text-green-400 border border-green-500/50' 
+                       : 'bg-red-500/20 text-red-400 border border-red-500/50'
+                    }`}>
+                       {results.suggestedPriceLocal < marketStats.avg 
+                         ? `低于均价 ${(marketStats.avg - results.suggestedPriceLocal).toFixed(0)}` 
+                         : `高于均价 ${(results.suggestedPriceLocal - marketStats.avg).toFixed(0)}`
+                       }
+                    </div>
+                 )}
                </div>
              </div>
 
              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm pt-4 border-t border-slate-700/50">
                <div>
                  <span className="text-slate-400 block mb-1">预估运费</span>
-                 <span className="font-semibold text-white text-lg">฿ {results.shippingCostTHB}</span>
+                 <span className="font-semibold text-white text-lg">{currencySymbol} {results.shippingCostLocal}</span>
                  <span className="text-xs text-slate-500 block">(¥ {results.shippingCostCNY})</span>
                </div>
                <div>
@@ -273,15 +372,15 @@ export const LogisticsCalculator: React.FC = () => {
         </div>
       </div>
 
-      {/* --- Right Column: Standard Price Table --- */}
+      {/* --- Right Column: Price Table --- */}
       <div className="lg:col-span-5 flex flex-col h-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
          <div className="bg-indigo-50 px-5 py-4 border-b border-indigo-100">
            <h3 className="font-bold text-lg text-indigo-900 flex items-center gap-2">
              <Package className="text-indigo-600" size={20}/>
-             Standard 渠道价格表 (THB)
+             Standard 价格表 ({currencySymbol})
            </h3>
            <p className="text-xs text-indigo-600/70 mt-1">
-             计费公式：Base + (Weight/10)。更新于 2024-05
+             市场：{market === 'TH' ? '泰国 (Thailand)' : '菲律宾 (Philippines)'}
            </p>
          </div>
          
@@ -296,12 +395,11 @@ export const LogisticsCalculator: React.FC = () => {
                </tr>
              </thead>
              <tbody className="divide-y divide-slate-100">
-               {STANDARD_PRICE_TABLE.map((row) => (
+               {priceTable.map((row) => (
                  <tr 
                     key={row.weight} 
                     className={`hover:bg-slate-50 transition-colors ${
-                      // Highlight current weight row logic approx
-                      Math.abs(row.weight - (results.chargeableWeight * 1000)) < 5 ? 'bg-yellow-50 font-bold' : ''
+                      Math.abs(row.weight - (results.chargeableWeight * 1000)) < (market === 'TH' ? 5 : 50) ? 'bg-yellow-50 font-bold' : ''
                     }`}
                  >
                    <td className="px-3 py-2 text-slate-900 font-medium border-r bg-slate-50/30">{row.weight}</td>
@@ -312,22 +410,6 @@ export const LogisticsCalculator: React.FC = () => {
                ))}
              </tbody>
            </table>
-         </div>
-         
-         {/* Footer Legend */}
-         <div className="p-3 bg-slate-50 border-t border-slate-200 grid grid-cols-3 gap-2 text-[10px] text-slate-500 text-center">
-            <div className="flex flex-col items-center">
-               <span className="font-bold text-blue-600">Zone A</span>
-               <span>曼谷/暖武里/巴吞他尼/北榄</span>
-            </div>
-            <div className="flex flex-col items-center border-l border-slate-200">
-               <span className="font-bold text-indigo-600">Zone B</span>
-               <span>其他外府地区</span>
-            </div>
-            <div className="flex flex-col items-center border-l border-slate-200">
-               <span className="font-bold text-purple-600">Zone C</span>
-               <span>偏远地区/岛屿/深山</span>
-            </div>
          </div>
       </div>
     </div>

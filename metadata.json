@@ -1,6 +1,6 @@
 {
-  "name": "SiamAI",
-  "description": "Real-time AI analysis for cross-border e-commerce products targeting the Thai market. Features market insights, video generation, and image editing.",
+  "name": "PinoyAI",
+  "description": "Real-time AI analysis for cross-border e-commerce products targeting the Philippine market. Features market insights, video generation, and image editing.",
   "requestFramePermissions": [
     "microphone"
   ]

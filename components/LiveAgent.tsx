@@ -1,46 +1,48 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
-import { Send, Bot, User, Loader2, Sparkles, MessageSquarePlus, Box, Clapperboard, Image as ImageIcon, X, Copy, Check, ArrowRightCircle, Palette, Wand2 } from 'lucide-react';
-import { AnalysisData } from '../types';
+import { Send, Bot, User, Loader2, Sparkles, MessageSquarePlus, Box, Clapperboard, Image as ImageIcon, X, Copy, Check, Wand2, Palette, Layers } from 'lucide-react';
+import { AnalysisData, TargetMarket } from '../types';
 
 interface LiveAgentProps {
   contextData?: AnalysisData | null;
+  market: TargetMarket;
   onUsePrompt: (prompt: string) => void;
+  onBatchGenerate: (prompts: Array<{label: string, prompt: string}>) => void;
 }
 
-const SYSTEM_INSTRUCTION_BASE = `
-你是一位针对泰国市场（Shopee, Lazada, TikTok Shop）的跨境电商高级顾问。
+const getSystemInstruction = (market: TargetMarket) => `
+你是一位针对${market === 'TH' ? '泰国 (Thailand)' : '菲律宾 (Philippines)'}市场的跨境电商高级顾问。
 你的任务是帮助用户解决选品、定价、营销和物流方面的具体问题。
 请使用中文与用户进行专业、热情且切中要害的对话。
-如果涉及货币，默认使用泰铢 (THB)。
+如果涉及货币，默认使用${market === 'TH' ? '泰铢 (THB)' : '菲律宾比索 (PHP)'}。
 回答时请条理清晰，可以使用 Markdown 格式（如列表、加粗）来增强可读性。
 
-【特殊能力 - 当已知产品信息时】：
-1. SKU 规划：请根据产品特性，建议适合泰国市场的 SKU 组合（如：颜色、尺寸、打包销售策略）。
-2. 视频脚本：可以为该产品生成 TikTok 短视频拍摄脚本（包含分镜、运镜、台词）。
-3. 详情页优化：撰写 Shopee/Lazada/TikTok 不同风格的产品详情页卖点（TikTok 偏向短快痛点、情绪价值，Shopee 偏向参数、信任感）。
+【市场专家角色设定】：
+${market === 'TH' 
+  ? '- 了解泰国佛教文化、皇室禁忌、色彩喜好（鲜艳）。\n- 熟悉 Shopee TH, Lazada TH, TikTok TH。\n- 推荐关键词语言：泰语 (Thai)。' 
+  : '- 了解菲律宾天主教文化、美式影响、节日（圣诞季长）。\n- 熟悉 Shopee PH, Lazada PH, TikTok PH。\n- 推荐关键词语言：英语 (English) 或 Tagalog。'}
 
-【图片分析能力】：
-如果用户上传了图片（例如竞品 SKU、海报、买家秀），请分析图片的视觉元素、卖点、材质和适用场景。
+【特殊能力 - 当已知产品信息时】：
+1. SKU 规划：建议适合当地市场的 SKU 组合（如：颜色、尺寸、打包策略）。
+2. 视频脚本：生成本土化 TikTok 短视频脚本。
+3. 详情页优化：撰写 ${market === 'TH' ? '泰语风格' : 'Taglish/英语风格'} 的卖点。
 
 【智能配图生成 (SKU 详情页专用)】：
-当用户询问“场景图建议”、“生成图片提示词”、“配图建议”或“SKU 配图”时，请不要随机生成，而是**严格按照高转化率 SKU 详情页的 5 大关键板块顺序**，为每个板块生成 1 个高质量的英文 AI 绘画 Prompt。
-这将帮助用户直接将生成的图片插入到详情页对应的位置。
+当用户询问“场景图建议”、“生成图片提示词”、“配图建议”或“SKU 配图”时，请基于当前分析的产品，**严格按照以下 8 个核心板块顺序**，生成极具**${market === 'TH' ? '泰国' : '菲律宾'}本土电商风格**的英文 AI 绘画提示词。
 
-请依次生成以下板块的提示词：
-1. **Hero Poster (首屏海报)**: 高冲击力、大场景、光影质感，强调核心卖点 (e.g., Cinematic lighting, product hero shot)。
-2. **Lifestyle (沉浸式场景)**: 结合泰国当地生活环境，展示产品实际使用 (e.g., Bangkok cafe, tropical beach, daily life context)。
-3. **Pain Point/Solution (痛点与解决)**: 直观展示问题解决前后的对比或特定功能演示 (e.g., Problem vs Solution, water resistance test)。
-4. **Detail/Texture (材质细节)**: 微距视角，展示做工、质地或成分 (e.g., Extreme close-up, fabric texture, macro shot)。
-5. **Social Proof (买家秀)**: 模拟真实用户视角，增加信任感 (e.g., Selfie holding product, unboxing POV)。
+**请依次生成 8 个板块的 Prompt:**
+1. **Hero Poster (首屏海报)**: ${market === 'TH' ? 'Vibrant colors, summer vibe' : 'High contrast, bold text'}.
+2. **Product Overview (产品全貌)**
+3. **Pain Points (核心功能/痛点)**
+4. **Lifestyle Scenario (场景化)**: ${market === 'TH' ? 'Bangkok street or modern Thai condo' : 'Metro Manila condo or tropical island'}.
+5. **Competitor Comparison (竞品对比)**
+6. **Quality Details (细节品质)**
+7. **Social Proof (用户口碑)**
+8. **Certificates (资质认证)**
 
 **务必严格按照以下格式输出每一个 Prompt，以便系统识别为可点击按钮**：
 **[板块名称]**
 🎨 Prompt: [英文提示词内容]
-
-(例如：
-**1. 首屏海报**
-🎨 Prompt: A bottle of sunscreen on a white sand beach, blue ocean background, bright sunlight, 4k, photorealistic)
 `;
 
 // Helper function to render formatted text with action buttons
@@ -123,7 +125,7 @@ const formatMessageText = (text: string, onUsePrompt: (prompt: string) => void) 
   });
 };
 
-export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }) => {
+export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, market, onUsePrompt, onBatchGenerate }) => {
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string, image?: string}[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -137,11 +139,11 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize or Re-initialize chat when context changes
+  // Initialize or Re-initialize chat when context or MARKET changes
   useEffect(() => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    let systemInstruction = SYSTEM_INSTRUCTION_BASE;
+    let systemInstruction = getSystemInstruction(market);
     if (contextData) {
       systemInstruction += `\n\n【当前分析的产品信息】：\n${contextData.text.substring(0, 1500)}...\n\n请基于以上产品信息回答用户问题。重点关注 SKU 建议和视频营销内容。`;
     }
@@ -151,18 +153,19 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
       config: { systemInstruction },
     });
 
-    // Reset messages if it's a fresh load (or context changed), otherwise keep history
-    if (messages.length === 0) {
-      setMessages([
+    // Reset messages if it's a fresh load (or context/market changed)
+    const marketName = market === 'TH' ? '泰国' : '菲律宾';
+    const flag = market === 'TH' ? '🇹🇭' : '🇵🇭';
+    
+    setMessages([
         { 
           role: 'model', 
           text: contextData 
-            ? '### 已接收市场分析报告！💡\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：如何设置变体更好卖？\n2. **视频脚本**：TikTok 爆款视频怎么拍？\n3. **SKU 配图**：为详情页生成全套场景提示词。\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。' 
-            : '### 你好！我是你的专属泰国市场顾问。\n\n关于选品趋势、平台规则或营销策略，有什么想问的吗？\n\n📸 **特殊功能**：您可以上传任何 SKU 图片，让我分析卖点或提取 AI 绘画/视频提示词。' 
+            ? `### 已接收${marketName}市场分析报告！${flag}\n\n我可以针对这个产品为您提供更深度的落地建议：\n\n1. **SKU 策略**：在${marketName}如何设置变体更好卖？\n2. **视频脚本**：TikTok ${market} 爆款视频怎么拍？\n3. **SKU 配图**：为详情页生成全套场景提示词。\n\n您也可以点击左下角图片按钮，上传竞品 SKU 让我分析。` 
+            : `### Sawasdee/Mabuhay！我是你的${marketName}市场专属顾问。\n\n关于选品趋势、平台规则或本地化营销策略，有什么想问的吗？\n\n📸 **特殊功能**：您可以上传任何 SKU 图片，让我分析卖点或提取 AI 绘画/视频提示词。` 
         }
-      ]);
-    }
-  }, [contextData]);
+    ]);
+  }, [contextData, market]);
 
   // Auto-scroll
   useEffect(() => {
@@ -195,6 +198,22 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const extractPrompts = (text: string) => {
+    const prompts: Array<{label: string, prompt: string}> = [];
+    const regex = /\*\*(.*?)\*\*\s*\n\s*🎨 Prompt[:：]\s*(.*?)(?=\n\n|\n\*\*|$)/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        let rawLabel = match[1].replace(/^\d+\.\s*/, '').trim();
+        const shortLabel = rawLabel.split('(')[0].trim() || rawLabel; 
+        
+        prompts.push({
+            label: shortLabel,
+            prompt: match[2].trim()
+        });
+    }
+    return prompts;
+  };
+
   const handleSend = async (textOverride?: string) => {
     const textToSend = textOverride || input;
     if ((!textToSend.trim() && !pendingImage) || !chatSessionRef.current) return;
@@ -220,7 +239,6 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
       let messagePayload: any;
       
       if (imageToSend) {
-        // Prepare multimodal message
         const base64Data = imageToSend.split(',')[1];
         messagePayload = [
           { text: textToSend || "请分析这张图片" },
@@ -256,29 +274,29 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
     }
   };
 
-  // Dynamic suggestions based on context
+  // Dynamic suggestions based on context & market
   const suggestions = contextData ? [
     { text: "生成 SKU 组合策略", icon: <Box size={16}/> },
     { text: "生成 SKU 详情页配图", icon: <ImageIcon size={16}/> },
     { text: "写一个 TikTok 视频脚本", icon: <Clapperboard size={16}/> },
     { text: "分析差评风险", icon: <MessageSquarePlus size={16}/> },
   ] : [
-    { text: "帮我写 3 个泰语 TikTok 标题", icon: <MessageSquarePlus size={16}/> },
-    { text: "目前曼谷流行什么产品？", icon: <Sparkles size={16}/> },
+    { text: `写 3 个 ${market === 'TH' ? '泰语' : 'Tagalog'} 标题`, icon: <MessageSquarePlus size={16}/> },
+    { text: `目前${market === 'TH' ? '曼谷' : '马尼拉'}流行什么？`, icon: <Sparkles size={16}/> },
     { text: "Shopee 和 Lazada 哪个好做？", icon: <MessageSquarePlus size={16}/> },
-    { text: "提取这张图片的 Veo 提示词", icon: <ImageIcon size={16}/> } // Added useful default
+    { text: "提取这张图片的 Veo 提示词", icon: <ImageIcon size={16}/> }
   ];
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-140px)] min-h-[600px] overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm z-10">
-        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-md">
+        <div className={`w-12 h-12 bg-gradient-to-br ${market === 'TH' ? 'from-teal-500 to-emerald-600' : 'from-indigo-500 to-purple-600'} rounded-full flex items-center justify-center shadow-md`}>
           <Bot className="text-white" size={28} />
         </div>
         <div>
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-            AI 专家顾问
+            AI 专家顾问 ({market === 'TH' ? '泰国' : '菲律宾'}站)
             <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">Online</span>
           </h3>
           <p className="text-sm text-slate-500">Gemini 3.0 • {contextData ? '已关联产品分析' : '通用咨询模式'}</p>
@@ -287,54 +305,69 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50/50">
-        {messages.map((msg, idx) => (
-          <div 
-            key={idx} 
-            className={`flex items-start gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-          >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-              msg.role === 'user' ? 'bg-indigo-600' : 'bg-white border border-slate-200'
-            }`}>
-              {msg.role === 'user' ? <User size={20} className="text-white"/> : <Sparkles size={20} className="text-purple-600"/>}
-            </div>
-            
-            <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              {/* Image Bubble if exists */}
-              {msg.image && (
-                <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-[240px]">
-                  <img src={msg.image} alt="User upload" className="w-full h-auto" />
-                </div>
-              )}
+        {messages.map((msg, idx) => {
+          const detectedPrompts = msg.role === 'model' ? extractPrompts(msg.text) : [];
+          
+          return (
+            <div 
+              key={idx} 
+              className={`flex items-start gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+            >
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                msg.role === 'user' ? 'bg-indigo-600' : 'bg-white border border-slate-200'
+              }`}>
+                {msg.role === 'user' ? <User size={20} className="text-white"/> : <Sparkles size={20} className="text-purple-600"/>}
+              </div>
               
-              {/* Text Bubble */}
-              {msg.text && (
-                 <div className={`group relative rounded-2xl px-6 py-4 shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-indigo-600 text-white rounded-tr-none' 
-                    : 'bg-white border border-slate-100 rounded-tl-none w-full'
-                }`}>
-                  {msg.role === 'model' ? (
-                    <div className="w-full pr-8">
-                      {formatMessageText(msg.text, onUsePrompt)}
-                      {/* Copy Button */}
-                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button 
-                           onClick={() => handleCopy(msg.text, idx)}
-                           className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-indigo-600 transition-colors"
-                           title="复制内容"
-                         >
-                           {copiedId === idx ? <Check size={16} className="text-green-600"/> : <Copy size={16}/>}
-                         </button>
+              <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                {msg.image && (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-[240px]">
+                    <img src={msg.image} alt="User upload" className="w-full h-auto" />
+                  </div>
+                )}
+                
+                {msg.text && (
+                   <div className={`group relative rounded-2xl px-6 py-4 shadow-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-indigo-600 text-white rounded-tr-none' 
+                      : 'bg-white border border-slate-100 rounded-tl-none w-full'
+                  }`}>
+                    {msg.role === 'model' ? (
+                      <div className="w-full pr-8">
+                        {formatMessageText(msg.text, onUsePrompt)}
+                        
+                        {/* BATCH GENERATION BUTTON */}
+                        {detectedPrompts.length > 1 && (
+                            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-400">检测到 {detectedPrompts.length} 个设计提示词</span>
+                                <button 
+                                  onClick={() => onBatchGenerate(detectedPrompts)}
+                                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                                >
+                                    <Layers size={16} /> 一键生成全套素材
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <button 
+                             onClick={() => handleCopy(msg.text, idx)}
+                             className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-indigo-600 transition-colors"
+                             title="复制内容"
+                           >
+                             {copiedId === idx ? <Check size={16} className="text-green-600"/> : <Copy size={16}/>}
+                           </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="text-base leading-relaxed">{msg.text}</div>
-                  )}
-                </div>
-              )}
+                    ) : (
+                      <div className="text-base leading-relaxed">{msg.text}</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isTyping && (
           <div className="flex items-start gap-4">
@@ -388,7 +421,6 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ contextData, onUsePrompt }
         )}
 
         <div className="flex gap-2 items-end bg-slate-50 border border-slate-200 rounded-xl p-3 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
-          
           <button
             onClick={() => fileInputRef.current?.click()}
             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0"
